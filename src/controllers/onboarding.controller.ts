@@ -3,15 +3,13 @@ import { AuthRequest } from "../types/AuthRequest";
 import * as onboardingService from "../services/onboarding.service";
 import { Company } from "../models/Company.model";
 import { Branch } from "../models/Branch.model";
-import { BranchHours } from "../models/BranchHours.model";
 import { Recipe } from "../models/Recipe.model";
-import { Ingredient } from "../models/Ingredient.model";
 import { Equipment } from "../models/Equipment.model";
 import { FixedCost } from "../models/FixedCost.model";
-import { POSConnection } from "../models/POSConnection.model";
-import { AlertConfig } from "../models/AlertConfig.model";
-import { OnboardingProgress } from "../models/OnboardingProgress.model";
 import { User } from "../models/User.model";
+
+// Onboarding steps (6 total):
+// 1 Empresa · 2 Sucursal · 3 Costos Fijos · 4 Platos (costeo simple) · 5 Equipos · 6 Finalizar
 
 export async function saveOnboardingStep(req: AuthRequest, res: Response) {
   try {
@@ -23,8 +21,8 @@ export async function saveOnboardingStep(req: AuthRequest, res: Response) {
 
     const { step, data } = req.body;
 
-    if (!step || step < 1 || step > 10) {
-      res.status(400).json({ message: "Step must be between 1 and 10" });
+    if (!step || step < 1 || step > 6) {
+      res.status(400).json({ message: "Step must be between 1 and 6" });
       return;
     }
 
@@ -35,7 +33,7 @@ export async function saveOnboardingStep(req: AuthRequest, res: Response) {
 
     switch (step) {
       case 1: {
-        const { legalName, commercialName, ruc, country, city } = data;
+        const { legalName, commercialName, ruc, country, city, businessStage } = data;
         if (!legalName || !ruc) {
           res.status(400).json({ message: "legalName and ruc are required" });
           return;
@@ -43,7 +41,15 @@ export async function saveOnboardingStep(req: AuthRequest, res: Response) {
         const company = await Company.findOneAndUpdate(
           { userId },
           {
-            $set: { userId, legalName, commercialName: commercialName || "", ruc, country: country || "", city: city || "" },
+            $set: {
+              userId,
+              legalName,
+              commercialName: commercialName || "",
+              ruc,
+              country: country || "",
+              city: city || "",
+              ...(businessStage ? { businessStage } : {}),
+            },
           },
           { upsert: true, new: true }
         );
@@ -82,51 +88,29 @@ export async function saveOnboardingStep(req: AuthRequest, res: Response) {
       }
 
       case 3: {
-        const { cocina, atencion } = data;
         const company = await Company.findOne({ userId });
         if (!company) {
           res.status(400).json({ message: "Company not found" });
           return;
         }
-        const branch = await Branch.findOne({ companyId: company._id, isMain: true });
-        if (!branch) {
-          res.status(400).json({ message: "Branch must be created first (step 2)" });
-          return;
-        }
-
-        await BranchHours.deleteMany({ branchId: branch._id });
-
-        const hoursEntries: Array<{
-          branchId: typeof branch._id;
-          dayOfWeek: number;
-          area: "cocina" | "atencion";
-          openTime: string;
-          closeTime: string;
-          isActive: boolean;
-        }> = [];
-
-        const pushHours = (arr: any[], area: "cocina" | "atencion") => {
-          if (!Array.isArray(arr)) return;
-          arr.forEach((h, i) => {
-            if (h.open && h.close) {
-              hoursEntries.push({
-                branchId: branch._id,
-                dayOfWeek: i,
-                area,
-                openTime: h.open,
-                closeTime: h.close,
-                isActive: true,
-              });
-            }
-          });
-        };
-
-        pushHours(cocina, "cocina");
-        pushHours(atencion, "atencion");
-
-        if (hoursEntries.length > 0) {
-          await BranchHours.insertMany(hoursEntries);
-        }
+        const { rent, payroll, utilities, internet, insurance, marketing, other } = data;
+        await FixedCost.findOneAndUpdate(
+          { companyId: company._id },
+          {
+            $set: {
+              companyId: company._id,
+              rent: rent || 0,
+              payroll: payroll || 0,
+              utilities: utilities || 0,
+              internet: internet || 0,
+              insurance: insurance || 0,
+              marketing: marketing || 0,
+              other: other || 0,
+              effectiveDate: new Date(),
+            },
+          },
+          { upsert: true, new: true }
+        );
         break;
       }
 
@@ -142,49 +126,23 @@ export async function saveOnboardingStep(req: AuthRequest, res: Response) {
           return;
         }
         for (const recipe of recipes) {
-          if (!recipe.name || !recipe.sellingPrice) {
-            res.status(400).json({ message: "Each recipe must have name and sellingPrice" });
+          if (!recipe.name || recipe.productionCost == null) {
+            res.status(400).json({ message: "Each recipe must have name and productionCost" });
             return;
           }
           await Recipe.create({
             companyId: company._id,
             name: recipe.name,
-            sellingPrice: recipe.sellingPrice,
-            ingredients: recipe.ingredients || [],
-            wastePercentage: recipe.wastePercentage || 0,
+            productionCost: recipe.productionCost,
+            sellingPrice: recipe.currentSellingPrice ?? undefined,
+            ingredients: [],
+            wastePercentage: 0,
           });
         }
         break;
       }
 
       case 5: {
-        const company = await Company.findOne({ userId });
-        if (!company) {
-          res.status(400).json({ message: "Company not found" });
-          return;
-        }
-        const ingredients = data.ingredients || (Array.isArray(data) ? data : []);
-        if (!Array.isArray(ingredients) || ingredients.length === 0) {
-          res.status(400).json({ message: "Ingredients array is required" });
-          return;
-        }
-        for (const ing of ingredients) {
-          if (!ing.name || !ing.unitOfMeasure || ing.costPrice == null) {
-            res.status(400).json({ message: "Each ingredient must have name, unitOfMeasure, and costPrice" });
-            return;
-          }
-          await Ingredient.create({
-            companyId: company._id,
-            name: ing.name,
-            unitOfMeasure: ing.unitOfMeasure,
-            costPrice: ing.costPrice,
-            wastePercentage: ing.wastePercentage || 0,
-          });
-        }
-        break;
-      }
-
-      case 6: {
         const company = await Company.findOne({ userId });
         if (!company) {
           res.status(400).json({ message: "Company not found" });
@@ -219,87 +177,7 @@ export async function saveOnboardingStep(req: AuthRequest, res: Response) {
         break;
       }
 
-      case 7: {
-        const company = await Company.findOne({ userId });
-        if (!company) {
-          res.status(400).json({ message: "Company not found" });
-          return;
-        }
-        const { rent, payroll, utilities, insurance, marketing, other } = data;
-        await FixedCost.findOneAndUpdate(
-          { companyId: company._id },
-          {
-            $set: {
-              companyId: company._id,
-              rent: rent || 0,
-              payroll: payroll || 0,
-              utilities: utilities || 0,
-              insurance: insurance || 0,
-              marketing: marketing || 0,
-              other: other || 0,
-              effectiveDate: new Date(),
-            },
-          },
-          { upsert: true, new: true }
-        );
-        break;
-      }
-
-      case 8: {
-        const company = await Company.findOne({ userId });
-        if (!company) {
-          res.status(400).json({ message: "Company not found" });
-          return;
-        }
-        const branch = await Branch.findOne({ companyId: company._id, isMain: true });
-        if (!branch) {
-          res.status(400).json({ message: "Branch must be created first (step 2)" });
-          return;
-        }
-        const { provider, apiKey, webhookUrl } = data;
-        if (provider) {
-          await POSConnection.findOneAndUpdate(
-            { branchId: branch._id },
-            {
-              $set: {
-                branchId: branch._id,
-                provider,
-                apiKey: apiKey || "",
-                webhookUrl: webhookUrl || "",
-                isActive: true,
-              },
-            },
-            { upsert: true, new: true }
-          );
-        }
-        break;
-      }
-
-      case 9: {
-        const company = await Company.findOne({ userId });
-        if (!company) {
-          res.status(400).json({ message: "Company not found" });
-          return;
-        }
-        const { whatsappEnabled, emailEnabled, pushEnabled, whatsappNumber, emailAddress } = data;
-        await AlertConfig.findOneAndUpdate(
-          { companyId: company._id },
-          {
-            $set: {
-              companyId: company._id,
-              whatsappEnabled: whatsappEnabled || false,
-              emailEnabled: emailEnabled || false,
-              pushEnabled: pushEnabled || false,
-              whatsappNumber: whatsappNumber || "",
-              emailAddress: emailAddress || "",
-            },
-          },
-          { upsert: true, new: true }
-        );
-        break;
-      }
-
-      case 10: {
+      case 6: {
         await Company.findOneAndUpdate({ userId }, { $set: { onboardingCompleted: true } });
         await onboardingService.completeOnboarding(userId);
         break;
@@ -331,6 +209,7 @@ export async function getOnboardingProgress(req: AuthRequest, res: Response) {
       isComplete: !!(progress?.isComplete || company?.onboardingCompleted),
       hasCompany: !!company,
       companyName: company?.legalName || company?.commercialName || null,
+      businessStage: company?.businessStage || null,
       data: progress?.data || {},
     };
 

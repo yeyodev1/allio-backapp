@@ -13,7 +13,7 @@ export interface IOnboardingProgress extends Document {
 const onboardingProgressSchema = new Schema<IOnboardingProgress>(
   {
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true, unique: true },
-    currentStep: { type: Number, default: 1, min: 1, max: 10 },
+    currentStep: { type: Number, default: 1, min: 1, max: 6 },
     completedSteps: { type: [Number], default: [] },
     data: { type: Schema.Types.Mixed, default: {} },
     isComplete: { type: Boolean, default: false },

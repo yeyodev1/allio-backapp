@@ -1,7 +1,8 @@
 import { Router } from "express";
-import { listEquipment, createEquipment, updateEquipment, deleteEquipment, getEquipmentDetail, generateQR, scanQRRedirect, listTickets, createTicket, updateTicket, checkOverdue } from "../controllers/maintenance.controller";
+import { listEquipment, createEquipment, updateEquipment, deleteEquipment, getEquipmentDetail, generateQR, scanQRRedirect, listTickets, createTicket, updateTicket, checkOverdue, getPublicEquipmentAudit } from "../controllers/maintenance.controller";
 import { authMiddleware } from "../middlewares/auth.middleware";
 export const maintenanceRouter = Router();
+maintenanceRouter.get("/public/equipment/:id", getPublicEquipmentAudit);
 maintenanceRouter.get("/equipment", authMiddleware, listEquipment);
 maintenanceRouter.post("/equipment", authMiddleware, createEquipment);
 maintenanceRouter.put("/equipment/:id", authMiddleware, updateEquipment);

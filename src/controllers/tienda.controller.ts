@@ -1,5 +1,7 @@
 import { Response } from "express";
-import { Tienda } from "../models/Tienda.model";
+import { Branch } from "../models/Branch.model";
+import { Company } from "../models/Company.model";
+import { User } from "../models/User.model";
 import { AuthRequest } from "../types/AuthRequest";
 
 function userOr401(req: AuthRequest, res: Response): string | null {
@@ -11,97 +13,129 @@ function userOr401(req: AuthRequest, res: Response): string | null {
   return userId;
 }
 
+async function resolveCompanyId(userId: string): Promise<string | null> {
+  const user = await User.findById(userId);
+  if (!user) return null;
+  const workspaceId = user.workspaceIds?.[0];
+  if (workspaceId) return workspaceId.toString();
+  const company = await Company.findOne({ userId }).select("_id").lean();
+  return company?._id.toString() || null;
+}
+
+function toTienda(branch: any) {
+  return {
+    id: branch._id.toString(),
+    name: branch.name,
+    businessType: null,
+    address: branch.address || "",
+    city: "",
+    manager: "",
+    phone: branch.phone || "",
+    status: branch.isActive ? "active" : "paused",
+    staff: 0,
+    monthlyClients: 0,
+    notes: "",
+    createdAt: branch.createdAt,
+    isMain: branch.isMain,
+  };
+}
+
 export async function listTiendas(req: AuthRequest, res: Response) {
   const userId = userOr401(req, res);
   if (!userId) return;
-  const tiendas = await Tienda.find({ userId }).sort({ isMain: -1, createdAt: 1 });
-  res.json(tiendas);
+  const companyId = await resolveCompanyId(userId);
+  if (!companyId) { res.json([]); return; }
+  const branches = await Branch.find({ companyId }).sort({ isMain: -1, createdAt: 1 });
+  res.json(branches.map(toTienda));
 }
 
 export async function createTienda(req: AuthRequest, res: Response) {
   const userId = userOr401(req, res);
   if (!userId) return;
 
-  const { name, businessType, address, city, manager, phone, status, staff, monthlyClients, notes, isMain, workspaceName } = req.body;
+  const companyId = await resolveCompanyId(userId);
+  if (!companyId) {
+    res.status(400).json({ message: "Workspace must be created first" });
+    return;
+  }
+
+  const { name, address, city, phone, status, isMain } = req.body;
 
   if (!name || typeof name !== "string") {
     res.status(400).json({ message: "Tienda name is required" });
     return;
   }
 
-  const existing = await Tienda.countDocuments({ userId });
+  const existing = await Branch.countDocuments({ companyId });
   const shouldBeMain = !!isMain || existing === 0;
 
   if (shouldBeMain) {
-    await Tienda.updateMany({ userId, isMain: true }, { $set: { isMain: false } });
+    await Branch.updateMany({ companyId, isMain: true }, { $set: { isMain: false } });
   }
 
-  const tienda = new Tienda({
-    userId,
-    workspaceName: workspaceName || "",
+  const branch = new Branch({
+    companyId,
     name,
-    businessType: businessType ?? null,
-    address: address ?? "",
-    city: city ?? "",
-    manager: manager ?? "",
+    address: [address, city].filter(Boolean).join(", "),
     phone: phone ?? "",
-    status: status ?? "opening",
-    staff: typeof staff === "number" ? staff : 0,
-    monthlyClients: typeof monthlyClients === "number" ? monthlyClients : 0,
-    notes: notes ?? "",
+    isActive: status !== "paused",
     isMain: shouldBeMain,
   });
 
-  await tienda.save();
-  res.status(201).json(tienda);
+  await branch.save();
+  res.status(201).json(toTienda(branch));
 }
 
 export async function updateTienda(req: AuthRequest, res: Response) {
   const userId = userOr401(req, res);
   if (!userId) return;
   const { id } = req.params;
+  const companyId = await resolveCompanyId(userId);
+  if (!companyId) { res.status(400).json({ message: "Workspace must be created first" }); return; }
 
-  const tienda = await Tienda.findOne({ _id: id, userId });
-  if (!tienda) {
+  const branch = await Branch.findOne({ _id: id, companyId });
+  if (!branch) {
     res.status(404).json({ message: "Tienda not found" });
     return;
   }
 
-  const editable = ["name", "businessType", "address", "city", "manager", "phone", "status", "staff", "monthlyClients", "notes", "workspaceName"] as const;
-  for (const key of editable) {
-    if (req.body[key] !== undefined) {
-      (tienda as any)[key] = req.body[key];
-    }
+  if (req.body.name !== undefined) branch.name = req.body.name;
+  if (req.body.address !== undefined || req.body.city !== undefined) {
+    branch.address = [req.body.address, req.body.city].filter(Boolean).join(", ");
   }
+  if (req.body.phone !== undefined) branch.phone = req.body.phone;
+  if (req.body.status !== undefined) branch.isActive = req.body.status !== "paused";
 
   if (req.body.isMain === true) {
-    await Tienda.updateMany({ userId, _id: { $ne: tienda._id } }, { $set: { isMain: false } });
-    tienda.isMain = true;
+    await Branch.updateMany({ companyId, _id: { $ne: branch._id } }, { $set: { isMain: false } });
+    branch.isMain = true;
   }
 
-  await tienda.save();
-  res.json(tienda);
+  await branch.save();
+  res.json(toTienda(branch));
 }
 
 export async function deleteTienda(req: AuthRequest, res: Response) {
   const userId = userOr401(req, res);
   if (!userId) return;
   const { id } = req.params;
+  const companyId = await resolveCompanyId(userId);
+  if (!companyId) { res.status(400).json({ message: "Workspace must be created first" }); return; }
 
-  const count = await Tienda.countDocuments({ userId });
+  const count = await Branch.countDocuments({ companyId });
   if (count <= 1) {
     res.status(400).json({ message: "Debe quedar al menos una tienda en el workspace" });
     return;
   }
 
-  const tienda = await Tienda.findOneAndDelete({ _id: id, userId });
-  if (!tienda) {
+  const branch = await Branch.findOneAndDelete({ _id: id, companyId });
+  if (!branch) {
     res.status(404).json({ message: "Tienda not found" });
     return;
   }
 
-  if (tienda.isMain) {
-    const next = await Tienda.findOne({ userId }).sort({ createdAt: 1 });
+  if (branch.isMain) {
+    const next = await Branch.findOne({ companyId }).sort({ createdAt: 1 });
     if (next) {
       next.isMain = true;
       await next.save();
@@ -115,16 +149,18 @@ export async function setMainTienda(req: AuthRequest, res: Response) {
   const userId = userOr401(req, res);
   if (!userId) return;
   const { id } = req.params;
+  const companyId = await resolveCompanyId(userId);
+  if (!companyId) { res.status(400).json({ message: "Workspace must be created first" }); return; }
 
-  const tienda = await Tienda.findOne({ _id: id, userId });
-  if (!tienda) {
+  const branch = await Branch.findOne({ _id: id, companyId });
+  if (!branch) {
     res.status(404).json({ message: "Tienda not found" });
     return;
   }
 
-  await Tienda.updateMany({ userId }, { $set: { isMain: false } });
-  tienda.isMain = true;
-  await tienda.save();
+  await Branch.updateMany({ companyId }, { $set: { isMain: false } });
+  branch.isMain = true;
+  await branch.save();
 
-  res.json(tienda);
+  res.json(toTienda(branch));
 }

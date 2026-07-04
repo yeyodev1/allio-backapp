@@ -7,6 +7,7 @@ export interface ICompany extends Document {
   ruc: string;
   country?: string;
   city?: string;
+  businessStage?: "new" | "existing";
   onboardingCompleted: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -20,6 +21,7 @@ const companySchema = new Schema<ICompany>(
     ruc: { type: String, required: true, trim: true },
     country: { type: String, trim: true },
     city: { type: String, trim: true },
+    businessStage: { type: String, enum: ["new", "existing"] },
     onboardingCompleted: { type: Boolean, default: false },
   },
   { timestamps: true }

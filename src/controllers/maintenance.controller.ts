@@ -17,6 +17,84 @@ async function resolveBranchId(userId: string, queryBranchId?: string): Promise<
   return mainBranch ? mainBranch._id.toString() : null;
 }
 
+async function getUserCompany(userId: string) {
+  return Company.findOne({ userId });
+}
+
+async function findUserBranch(userId: string, branchId: string) {
+  const company = await getUserCompany(userId);
+  if (!company) return null;
+  return Branch.findOne({ _id: branchId, companyId: company._id });
+}
+
+async function isUserBranch(userId: string, branchId: string) {
+  return Boolean(await findUserBranch(userId, branchId));
+}
+
+async function equipmentWithBranchPayload(equipment: any) {
+  const branch = await Branch.findById(equipment.branchId).select("name isMain");
+  return {
+    ...equipment.toObject(),
+    branchName: branch?.name || "Sucursal",
+    branchIsMain: Boolean(branch?.isMain),
+  };
+}
+
+function frontendBaseUrlFromRequest(req: AuthRequest): string | undefined {
+  const origin = req.headers.origin;
+  return typeof origin === "string" ? origin : undefined;
+}
+
+export async function getPublicEquipmentAudit(req: AuthRequest, res: Response) {
+  try {
+    const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const possibleId = decodeURIComponent(rawId || "").split("/").pop() || rawId;
+    const equipment = /^[a-f0-9]{24}$/i.test(possibleId)
+      ? await Equipment.findById(possibleId)
+      : null;
+
+    if (!equipment) {
+      res.status(404).json({ message: "Equipment not found" });
+      return;
+    }
+
+    const depreciationValue = maintenanceService.calculateDepreciation(
+      equipment.purchaseDate,
+      equipment.historicalCost,
+      equipment.usefulLife
+    );
+
+    const tickets = await MaintenanceTicket.find({ equipmentId: equipment._id })
+      .populate("reportedBy", "name")
+      .sort({ createdAt: 1 });
+
+    res.json({
+      equipment: {
+        ...(await equipmentWithBranchPayload(equipment)),
+        depreciationValue,
+      },
+      history: tickets.map((ticket: any) => ({
+        _id: ticket._id,
+        title: ticket.title,
+        description: ticket.description,
+        status: ticket.status,
+        priority: ticket.priority,
+        assignedTo: ticket.assignedTo,
+        resolutionNotes: ticket.resolutionNotes,
+        createdAt: ticket.createdAt,
+        updatedAt: ticket.updatedAt,
+        reportedByName: ticket.reportedBy?.name || "Equipo Allio",
+      })),
+      access: {
+        canWrite: false,
+        message: "Para registrar movimientos, fallas o cierres de mantenimiento debes iniciar sesión o pedir a un administrador que te registre.",
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: "Error fetching public equipment audit", error: error.message });
+  }
+}
+
 export async function listEquipment(req: AuthRequest, res: Response) {
   try {
     const userId = req.user?.userId;
@@ -31,8 +109,14 @@ export async function listEquipment(req: AuthRequest, res: Response) {
       return;
     }
 
+    if (!(await isUserBranch(userId, branchId))) {
+      res.status(403).json({ message: "Not authorized to list this branch" });
+      return;
+    }
+
     const equipment = await Equipment.find({ branchId }).sort({ name: 1 });
-    res.json(equipment);
+    const payload = await Promise.all(equipment.map((item) => equipmentWithBranchPayload(item)));
+    res.json(payload);
   } catch (error: any) {
     res.status(500).json({ message: "Error listing equipment", error: error.message });
   }
@@ -49,6 +133,11 @@ export async function createEquipment(req: AuthRequest, res: Response) {
     const branchId = await resolveBranchId(userId, req.body.branchId);
     if (!branchId) {
       res.status(400).json({ message: "No branch found" });
+      return;
+    }
+
+    if (!(await isUserBranch(userId, branchId))) {
+      res.status(403).json({ message: "Not authorized to create equipment in this branch" });
       return;
     }
 
@@ -84,7 +173,7 @@ export async function createEquipment(req: AuthRequest, res: Response) {
     });
 
     try {
-      await maintenanceService.generateQRCode(String(equipment._id));
+      await maintenanceService.generateQRCode(String(equipment._id), frontendBaseUrlFromRequest(req));
     } catch { /* QR opcional */ }
 
     const updated = await Equipment.findById(equipment._id);
@@ -110,10 +199,17 @@ export async function updateEquipment(req: AuthRequest, res: Response) {
       return;
     }
 
-    const branchId = await resolveBranchId(userId, req.query.branchId as string);
-    if (branchId && equipment.branchId.toString() !== branchId) {
+    if (!(await isUserBranch(userId, equipment.branchId.toString()))) {
       res.status(403).json({ message: "Not authorized to modify this equipment" });
       return;
+    }
+
+    if (req.body.branchId !== undefined) {
+      if (!(await isUserBranch(userId, req.body.branchId))) {
+        res.status(403).json({ message: "Not authorized to move equipment to this branch" });
+        return;
+      }
+      equipment.branchId = new mongoose.Types.ObjectId(req.body.branchId) as any;
     }
 
     const updatable = ["name", "brand", "purchaseDate", "historicalCost", "usefulLife", "maintenanceIntervalDays", "lastMaintenanceDate", "status", "notes", "imageUrl", "location"] as const;
@@ -126,7 +222,7 @@ export async function updateEquipment(req: AuthRequest, res: Response) {
     }
 
     await equipment.save();
-    res.json(equipment);
+    res.json(await equipmentWithBranchPayload(equipment));
   } catch (error: any) {
     res.status(500).json({ message: "Error updating equipment", error: error.message });
   }
@@ -147,8 +243,7 @@ export async function deleteEquipment(req: AuthRequest, res: Response) {
       return;
     }
 
-    const branchId = await resolveBranchId(userId, req.query.branchId as string);
-    if (branchId && equipment.branchId.toString() !== branchId) {
+    if (!(await isUserBranch(userId, equipment.branchId.toString()))) {
       res.status(403).json({ message: "Not authorized to delete this equipment" });
       return;
     }
@@ -175,6 +270,11 @@ export async function getEquipmentDetail(req: AuthRequest, res: Response) {
       return;
     }
 
+    if (!(await isUserBranch(userId, equipment.branchId.toString()))) {
+      res.status(403).json({ message: "Not authorized to view this equipment" });
+      return;
+    }
+
     const depreciationValue = maintenanceService.calculateDepreciation(
       equipment.purchaseDate,
       equipment.historicalCost,
@@ -182,7 +282,7 @@ export async function getEquipmentDetail(req: AuthRequest, res: Response) {
     );
 
     res.json({
-      ...equipment.toObject(),
+      ...(await equipmentWithBranchPayload(equipment)),
       depreciationValue,
     });
   } catch (error: any) {
@@ -205,13 +305,14 @@ export async function generateQR(req: AuthRequest, res: Response) {
       return;
     }
 
-    if (equipment.qrCode) {
-      res.json({ qrCode: equipment.qrCode });
+    if (!(await isUserBranch(userId, equipment.branchId.toString()))) {
+      res.status(403).json({ message: "Not authorized to generate QR for this equipment" });
       return;
     }
 
-    const qrDataUrl = await maintenanceService.generateQRCode(String(id));
-    res.json({ qrCode: qrDataUrl });
+    const publicUrl = maintenanceService.getEquipmentPublicUrl(String(id), frontendBaseUrlFromRequest(req));
+    const qrDataUrl = await maintenanceService.generateQRCode(String(id), frontendBaseUrlFromRequest(req));
+    res.json({ qrCode: qrDataUrl, url: publicUrl });
   } catch (error: any) {
     res.status(500).json({ message: "Error generating QR code", error: error.message });
   }
@@ -219,6 +320,12 @@ export async function generateQR(req: AuthRequest, res: Response) {
 
 export async function scanQRRedirect(req: AuthRequest, res: Response) {
   try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      res.status(401).json({ message: "Unauthorized" });
+      return;
+    }
+
     const rawCode = req.params.qrCode as string;
     if (!rawCode) {
       res.status(400).json({ message: "QR code parameter is required" });
@@ -238,6 +345,11 @@ export async function scanQRRedirect(req: AuthRequest, res: Response) {
       return;
     }
 
+    if (!(await isUserBranch(userId, equipment.branchId.toString()))) {
+      res.status(403).json({ message: "Not authorized to scan this equipment" });
+      return;
+    }
+
     const depreciationValue = maintenanceService.calculateDepreciation(
       equipment.purchaseDate,
       equipment.historicalCost,
@@ -245,7 +357,7 @@ export async function scanQRRedirect(req: AuthRequest, res: Response) {
     );
 
     res.json({
-      ...equipment.toObject(),
+      ...(await equipmentWithBranchPayload(equipment)),
       depreciationValue,
     });
   } catch (error: any) {
@@ -261,24 +373,39 @@ export async function listTickets(req: AuthRequest, res: Response) {
       return;
     }
 
-    const branchId = await resolveBranchId(userId, req.query.branchId as string);
-    if (!branchId) {
-      res.status(400).json({ message: "No branch found" });
-      return;
-    }
-
-    const filter: Record<string, unknown> = { branchId };
+    const filter: Record<string, unknown> = {};
     const status = req.query.status as string | undefined;
     const equipmentId = req.query.equipmentId as string | undefined;
     if (status) {
       filter.status = status;
     }
     if (equipmentId) {
+      const equipment = await Equipment.findById(equipmentId);
+      if (!equipment) {
+        res.status(404).json({ message: "Equipment not found" });
+        return;
+      }
+      if (!(await isUserBranch(userId, equipment.branchId.toString()))) {
+        res.status(403).json({ message: "Not authorized to list tickets for this equipment" });
+        return;
+      }
       filter.equipmentId = new mongoose.Types.ObjectId(equipmentId);
+    } else {
+      const branchId = await resolveBranchId(userId, req.query.branchId as string);
+      if (!branchId) {
+        res.status(400).json({ message: "No branch found" });
+        return;
+      }
+      if (!(await isUserBranch(userId, branchId))) {
+        res.status(403).json({ message: "Not authorized to list this branch" });
+        return;
+      }
+      filter.branchId = branchId;
     }
 
     const tickets = await MaintenanceTicket.find(filter)
       .populate("equipmentId")
+      .populate("reportedBy", "name")
       .sort({ createdAt: -1 });
 
     res.json(tickets);
@@ -305,6 +432,11 @@ export async function createTicket(req: AuthRequest, res: Response) {
     const equipment = await Equipment.findById(equipmentId);
     if (!equipment) {
       res.status(404).json({ message: "Equipment not found" });
+      return;
+    }
+
+    if (!(await isUserBranch(userId, equipment.branchId.toString()))) {
+      res.status(403).json({ message: "Not authorized to create tickets for this equipment" });
       return;
     }
 
@@ -336,6 +468,11 @@ export async function updateTicket(req: AuthRequest, res: Response) {
     const ticket = await MaintenanceTicket.findById(id);
     if (!ticket) {
       res.status(404).json({ message: "Ticket not found" });
+      return;
+    }
+
+    if (!(await isUserBranch(userId, ticket.branchId.toString()))) {
+      res.status(403).json({ message: "Not authorized to update this ticket" });
       return;
     }
 

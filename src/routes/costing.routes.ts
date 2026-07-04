@@ -15,3 +15,6 @@ costingRouter.delete("/ingredients/:id", costingController.deleteIngredient);
 costingRouter.get("/recipes", costingController.listRecipes);
 costingRouter.post("/recipes", costingController.createRecipe);
 costingRouter.delete("/recipes/:id", costingController.deleteRecipe);
+
+// Price suggestion preview (no persistence) — used for live estimates in onboarding/CostingView
+costingRouter.post("/estimate", costingController.estimatePrice);

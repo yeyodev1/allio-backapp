@@ -16,31 +16,31 @@ function getClient(): Resend {
 export async function sendVerificationCode(to: string, name: string, code: string) {
   try {
     await getClient().emails.send({
-      from: `Rentabilidad360 <${FROM_EMAIL}>`,
+      from: `Allio <${FROM_EMAIL}>`,
       to,
-      subject: "Tu código de verificación · Rentabilidad360",
+      subject: "Tu código de verificación · Allio",
       html: `
         <!DOCTYPE html>
         <html>
         <head><meta charset="utf-8"></head>
-        <body style="font-family: 'Inter', system-ui, sans-serif; background: #f0f5f4; margin: 0; padding: 0;">
+        <body style="font-family: 'Inter', system-ui, sans-serif; background: #FFF6EE; margin: 0; padding: 0;">
           <table width="100%" cellpadding="0" cellspacing="0">
             <tr>
               <td align="center" style="padding: 40px 16px;">
                 <table width="480" cellpadding="0" cellspacing="0" style="background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.06);">
                   <tr>
-                    <td style="background: linear-gradient(135deg, #0F766E, #14B8A6); padding: 32px; text-align: center;">
-                      <h1 style="color: #ffffff; font-size: 24px; margin: 0;">Rentabilidad360</h1>
+                    <td style="background: linear-gradient(135deg, #588B8B, #7BA3A3); padding: 32px; text-align: center;">
+                      <h1 style="color: #ffffff; font-size: 24px; margin: 0;">Allio</h1>
                       <p style="color: rgba(255,255,255,0.85); font-size: 14px; margin: 8px 0 0;">Verifica tu correo electrónico</p>
                     </td>
                   </tr>
                   <tr>
                     <td style="padding: 32px; text-align: center;">
-                      <h2 style="color: #1a2e35; font-size: 20px; margin: 0 0 12px;">¡Hola ${name}!</h2>
+                      <h2 style="color: #2F243A; font-size: 20px; margin: 0 0 12px;">¡Hola ${name}!</h2>
                       <p style="color: #6b7f8b; font-size: 14px; line-height: 1.6; margin: 0 0 24px;">
                         Usa el siguiente código para verificar tu cuenta:
                       </p>
-                      <div style="background: #f0f5f4; border-radius: 12px; padding: 20px; margin: 0 0 24px; letter-spacing: 8px; font-size: 32px; font-weight: 800; color: #0F766E; font-family: monospace;">
+                      <div style="background: #FFF6EE; border-radius: 12px; padding: 20px; margin: 0 0 24px; letter-spacing: 8px; font-size: 32px; font-weight: 800; color: #588B8B; font-family: monospace;">
                         ${code}
                       </div>
                       <p style="color: #6b7f8b; font-size: 12px; line-height: 1.5; margin: 0;">
@@ -52,7 +52,7 @@ export async function sendVerificationCode(to: string, name: string, code: strin
                   <tr>
                     <td style="padding: 24px 32px; background: #f8fafc; border-top: 1px solid rgba(26,46,53,0.06);">
                       <p style="color: #6b7f8b; font-size: 12px; margin: 0; text-align: center;">
-                        © 2026 Rentabilidad360 — Todos los derechos reservados.
+                        © 2026 Allio — Todos los derechos reservados.
                       </p>
                     </td>
                   </tr>
@@ -73,31 +73,31 @@ export async function sendVerificationCode(to: string, name: string, code: strin
 export async function sendWelcomeEmail(to: string, name: string) {
   try {
     await getClient().emails.send({
-      from: `Rentabilidad360 <${FROM_EMAIL}>`,
+      from: `Allio <${FROM_EMAIL}>`,
       to,
-      subject: "¡Bienvenido a Rentabilidad360!",
+      subject: "¡Bienvenido a Allio!",
       html: `
         <!DOCTYPE html>
         <html>
         <head><meta charset="utf-8"></head>
-        <body style="font-family: 'Inter', system-ui, sans-serif; background: #f0f5f4; margin: 0; padding: 0;">
+        <body style="font-family: 'Inter', system-ui, sans-serif; background: #FFF6EE; margin: 0; padding: 0;">
           <table width="100%" cellpadding="0" cellspacing="0">
             <tr>
               <td align="center" style="padding: 40px 16px;">
                 <table width="480" cellpadding="0" cellspacing="0" style="background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.06);">
                   <tr>
-                    <td style="background: linear-gradient(135deg, #0F766E, #14B8A6); padding: 32px; text-align: center;">
-                      <h1 style="color: #ffffff; font-size: 24px; margin: 0;">Rentabilidad360</h1>
+                    <td style="background: linear-gradient(135deg, #588B8B, #7BA3A3); padding: 32px; text-align: center;">
+                      <h1 style="color: #ffffff; font-size: 24px; margin: 0;">Allio</h1>
                       <p style="color: rgba(255,255,255,0.85); font-size: 14px; margin: 8px 0 0;">Diagnóstico financiero para tu restaurante</p>
                     </td>
                   </tr>
                   <tr>
                     <td style="padding: 32px;">
-                      <h2 style="color: #1a2e35; font-size: 20px; margin: 0 0 12px;">¡Hola ${name}!</h2>
+                      <h2 style="color: #2F243A; font-size: 20px; margin: 0 0 12px;">¡Hola ${name}!</h2>
                       <p style="color: #6b7f8b; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
-                        Bienvenido a Rentabilidad360. Ya puedes empezar a diagnosticar tu restaurante y descubrir oportunidades para mejorar tu rentabilidad.
+                        Bienvenido a Allio. Ya puedes empezar a diagnosticar tu restaurante y descubrir oportunidades para mejorar tu rentabilidad.
                       </p>
-                      <a href="https://${FROM_DOMAIN}/onboarding" style="display: inline-block; background: linear-gradient(135deg, #0F766E, #14B8A6); color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: 700; font-size: 14px;">
+                      <a href="https://${FROM_DOMAIN}/onboarding" style="display: inline-block; background: linear-gradient(135deg, #588B8B, #7BA3A3); color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: 700; font-size: 14px;">
                         Comenzar diagnóstico
                       </a>
                     </td>
@@ -105,7 +105,7 @@ export async function sendWelcomeEmail(to: string, name: string) {
                   <tr>
                     <td style="padding: 24px 32px; background: #f8fafc; border-top: 1px solid rgba(26,46,53,0.06);">
                       <p style="color: #6b7f8b; font-size: 12px; margin: 0; text-align: center;">
-                        © 2026 Rentabilidad360 — Todos los derechos reservados.
+                        © 2026 Allio — Todos los derechos reservados.
                       </p>
                     </td>
                   </tr>
@@ -126,14 +126,14 @@ export async function sendWelcomeEmail(to: string, name: string) {
 export async function sendAlertEmail(to: string, subject: string, message: string) {
   try {
     await getClient().emails.send({
-      from: `Rentabilidad360 Alertas <${FROM_EMAIL}>`,
+      from: `Allio Alertas <${FROM_EMAIL}>`,
       to,
       subject: `⚠️ ${subject}`,
       html: `
         <!DOCTYPE html>
         <html>
         <head><meta charset="utf-8"></head>
-        <body style="font-family: 'Inter', system-ui, sans-serif; background: #f0f5f4; margin: 0; padding: 0;">
+        <body style="font-family: 'Inter', system-ui, sans-serif; background: #FFF6EE; margin: 0; padding: 0;">
           <table width="100%" cellpadding="0" cellspacing="0">
             <tr>
               <td align="center" style="padding: 40px 16px;">
@@ -145,9 +145,9 @@ export async function sendAlertEmail(to: string, subject: string, message: strin
                   </tr>
                   <tr>
                     <td style="padding: 32px;">
-                      <h2 style="color: #1a2e35; font-size: 18px; margin: 0 0 12px;">${subject}</h2>
+                      <h2 style="color: #2F243A; font-size: 18px; margin: 0 0 12px;">${subject}</h2>
                       <p style="color: #6b7f8b; font-size: 14px; line-height: 1.6; margin: 0;">${message}</p>
-                      <a href="https://${FROM_DOMAIN}/dashboard" style="display: inline-block; margin-top: 20px; background: #0F766E; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: 700; font-size: 14px;">
+                      <a href="https://${FROM_DOMAIN}/dashboard" style="display: inline-block; margin-top: 20px; background: #588B8B; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: 700; font-size: 14px;">
                         Ver dashboard
                       </a>
                     </td>
@@ -169,14 +169,14 @@ export async function sendAlertEmail(to: string, subject: string, message: strin
 export async function sendReminderEmail(to: string, subject: string, message: string, ctaLabel?: string, ctaLink?: string) {
   try {
     await getClient().emails.send({
-      from: `Rentabilidad360 <${FROM_EMAIL}>`,
+      from: `Allio <${FROM_EMAIL}>`,
       to,
       subject: `📌 Recordatorio: ${subject}`,
       html: `
         <!DOCTYPE html>
         <html>
         <head><meta charset="utf-8"></head>
-        <body style="font-family: 'Inter', system-ui, sans-serif; background: #f0f5f4; margin: 0; padding: 0;">
+        <body style="font-family: 'Inter', system-ui, sans-serif; background: #FFF6EE; margin: 0; padding: 0;">
           <table width="100%" cellpadding="0" cellspacing="0">
             <tr>
               <td align="center" style="padding: 40px 16px;">
@@ -188,9 +188,9 @@ export async function sendReminderEmail(to: string, subject: string, message: st
                   </tr>
                   <tr>
                     <td style="padding: 32px;">
-                      <h2 style="color: #1a2e35; font-size: 18px; margin: 0 0 12px;">${subject}</h2>
+                      <h2 style="color: #2F243A; font-size: 18px; margin: 0 0 12px;">${subject}</h2>
                       <p style="color: #6b7f8b; font-size: 14px; line-height: 1.6; margin: 0;">${message}</p>
-                      ${ctaLabel && ctaLink ? `<a href="${ctaLink}" style="display: inline-block; margin-top: 20px; background: #0F766E; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: 700; font-size: 14px;">${ctaLabel}</a>` : ""}
+                      ${ctaLabel && ctaLink ? `<a href="${ctaLink}" style="display: inline-block; margin-top: 20px; background: #588B8B; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: 700; font-size: 14px;">${ctaLabel}</a>` : ""}
                     </td>
                   </tr>
                 </table>

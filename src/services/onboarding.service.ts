@@ -1,16 +1,12 @@
 import { OnboardingProgress } from "../models/OnboardingProgress.model";
 
 interface OnboardingData {
-  step1?: { legalName: string; commercialName: string; ruc: string; country: string; city: string };
+  step1?: { legalName: string; commercialName: string; ruc: string; country: string; city: string; businessStage: "new" | "existing" };
   step2?: { name: string; address: string; phone: string };
-  step3?: { cocina: Array<{ dayOfWeek: number; openTime: string; closeTime: string }>; atencion: Array<{ dayOfWeek: number; openTime: string; closeTime: string }> };
-  step4?: Array<{ name: string; sellingPrice: number; ingredients: Array<{ ingredientId: string; quantity: number }> }>;
-  step5?: Array<{ name: string; unitOfMeasure: string; costPrice: number; wastePercentage: number }>;
-  step6?: Array<{ name: string; brand: string; purchaseDate: string; historicalCost: number; usefulLife: number; maintenanceIntervalDays: number }>;
-  step7?: { rent: number; payroll: number; utilities: number; insurance: number; marketing: number; other: number };
-  step8?: { provider: string; apiKey: string; webhookUrl: string };
-  step9?: { whatsappEnabled: boolean; emailEnabled: boolean; pushEnabled: boolean; whatsappNumber: string; emailAddress: string };
-  step10?: { completed: boolean };
+  step3?: { rent: number; payroll: number; utilities: number; internet: number; insurance: number; marketing: number; other: number };
+  step4?: { recipes: Array<{ name: string; productionCost: number; currentSellingPrice?: number }> };
+  step5?: { equipment: Array<{ name: string; brand: string; purchaseDate: string; historicalCost: number; usefulLife: number; maintenanceIntervalDays: number }> };
+  step6?: { completed: boolean };
 }
 
 export async function saveStep(userId: string, step: number, data: object): Promise<void> {

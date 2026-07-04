@@ -18,12 +18,17 @@ export function calculateDepreciation(purchaseDate: Date, historicalCost: number
   return Math.round((historicalCost - accumulatedDepreciation) * 100) / 100;
 }
 
-export async function generateQRCode(equipmentId: string): Promise<string> {
+export function getEquipmentPublicUrl(equipmentId: string, frontendBaseUrl?: string): string {
+  const rawBase = frontendBaseUrl || process.env.FRONTEND_URL || "https://rentabilidad360.netlify.app";
+  const base = rawBase.replace(/\/+$/, "");
+  return `${base}/modulo/mantenimiento/${equipmentId}`;
+}
+
+export async function generateQRCode(equipmentId: string, frontendBaseUrl?: string): Promise<string> {
   const equipment = await Equipment.findById(equipmentId);
   if (!equipment) throw new Error("Equipment not found");
 
-  const frontendUrl = process.env.FRONTEND_URL || "https://rentabilidad360.netlify.app";
-  const url = `${frontendUrl}/modulo/mantenimiento/${equipment._id.toString()}`;
+  const url = getEquipmentPublicUrl(equipment._id.toString(), frontendBaseUrl);
   const qrCode = await QRCode.toDataURL(url);
 
   await Equipment.findByIdAndUpdate(equipmentId, { qrCode });

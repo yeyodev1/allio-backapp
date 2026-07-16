@@ -3,10 +3,10 @@
  *
  * Borra TODOS los usuarios y toda su data relacionada,
  * luego los recrea con sus credenciales originales (email, nombre, role)
- * y password = "123456789" (isVerified = true).
+ * y la contraseña indicada en RESET_PASSWORD (isVerified = true).
  *
  * USO:
- *   pnpm ts-node --compiler-options '{"rootDir":"."}' scripts/reset-all-users.ts
+ *   RESET_PASSWORD=<password> pnpm ts-node --compiler-options '{"rootDir":"."}' scripts/reset-all-users.ts
  */
 
 import mongoose from "mongoose";
@@ -16,8 +16,13 @@ import path from "path";
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
 
 const DB_URI = process.env.DB_URI;
+const RESET_PASSWORD = process.env.RESET_PASSWORD;
 if (!DB_URI) {
   console.error("❌ DB_URI no está definido en .env");
+  process.exit(1);
+}
+if (!RESET_PASSWORD || RESET_PASSWORD.length < 6) {
+  console.error("❌ RESET_PASSWORD debe tener al menos 6 caracteres");
   process.exit(1);
 }
 
@@ -93,13 +98,13 @@ async function run() {
 
   console.log();
 
-  // 3. Recrear usuarios con password "123456789"
-  console.log("✨ Recreando usuarios con password 123456789...");
+  // 3. Recrear usuarios con la contraseña proporcionada de forma segura.
+  console.log("✨ Recreando usuarios con la contraseña configurada...");
   for (const snap of snapshot) {
     const newUser = new User({
       name: snap.name,
       email: snap.email,
-      password: "123456789",
+      password: RESET_PASSWORD,
       role: snap.role,
       isVerified: true,
       verificationCode: null,
@@ -110,7 +115,7 @@ async function run() {
   }
 
   console.log("\n🎉 Listo! Todos los usuarios fueron reseteados.");
-  console.log("   Password para todos: 123456789");
+  console.log("   Contraseña configurada para todos los usuarios");
   console.log("   isVerified: true (no necesitan verificar email)\n");
 
   await mongoose.disconnect();

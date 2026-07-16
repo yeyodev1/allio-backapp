@@ -1,16 +1,88 @@
 import { Resend } from "resend";
 
-const RESEND_API_KEY = process.env.RESEND_API_KEY || "re_GePtvFJm_NGAkkfHCxBbJWfboGaP94c2a";
 const FROM_DOMAIN = process.env.EMAIL_FROM_DOMAIN || "yeyo.dev";
 const FROM_EMAIL = `notificaciones@${FROM_DOMAIN}`;
 
 let resend: Resend | null = null;
 
 function getClient(): Resend {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) throw new Error("RESEND_API_KEY is not configured");
   if (!resend) {
-    resend = new Resend(RESEND_API_KEY);
+    resend = new Resend(apiKey);
   }
   return resend;
+}
+
+function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+export interface MaintenanceMovementEmail {
+  recipients: string[];
+  action: string;
+  actorName: string;
+  actorEmail: string;
+  actorRole: string;
+  equipmentName: string;
+  branchName: string;
+  occurredAt: Date;
+  details: Array<{ label: string; value: unknown }>;
+  equipmentUrl: string;
+}
+
+export async function sendMaintenanceMovementEmail(data: MaintenanceMovementEmail) {
+  const recipients = Array.from(new Set(data.recipients.map((email) => email.trim().toLowerCase()).filter(Boolean)));
+  if (!recipients.length) return;
+
+  const detailRows = data.details
+    .filter((detail) => detail.value !== undefined && detail.value !== null && detail.value !== "")
+    .map((detail) => `
+      <tr>
+        <td style="padding: 9px 12px; color: #588B8B; font-size: 12px; font-weight: 700; vertical-align: top;">${escapeHtml(detail.label)}</td>
+        <td style="padding: 9px 12px; color: #2F243A; font-size: 13px; line-height: 1.45;">${escapeHtml(detail.value)}</td>
+      </tr>`)
+    .join("");
+
+  await getClient().emails.send({
+    from: `Allio Mantenimiento <${FROM_EMAIL}>`,
+    to: recipients,
+    subject: `${data.action} · ${data.equipmentName}`,
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head><meta charset="utf-8"></head>
+      <body style="font-family: Inter, Arial, sans-serif; background: #FFF6EE; margin: 0; padding: 24px;">
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr><td align="center">
+            <table width="600" cellpadding="0" cellspacing="0" style="max-width: 100%; background: #ffffff; border-radius: 20px; overflow: hidden;">
+              <tr><td style="padding: 28px 32px; background: #2F243A;">
+                <p style="margin: 0 0 7px; color: #8AC926; font-size: 12px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase;">Movimiento de mantenimiento</p>
+                <h1 style="margin: 0; color: #ffffff; font-size: 22px;">${escapeHtml(data.action)}</h1>
+              </td></tr>
+              <tr><td style="padding: 28px 32px;">
+                <h2 style="margin: 0 0 6px; color: #2F243A; font-size: 19px;">${escapeHtml(data.equipmentName)}</h2>
+                <p style="margin: 0 0 22px; color: #588B8B; font-size: 13px;">${escapeHtml(data.branchName)} · ${escapeHtml(data.occurredAt.toLocaleString("es-EC", { timeZone: "America/Guayaquil" }))}</p>
+                <div style="padding: 14px 16px; background: #FFF6EE; border-radius: 14px; margin-bottom: 20px;">
+                  <strong style="display: block; color: #2F243A; font-size: 14px;">Registrado por ${escapeHtml(data.actorName)}</strong>
+                  <span style="color: #588B8B; font-size: 12px;">${escapeHtml(data.actorEmail)} · ${escapeHtml(data.actorRole)}</span>
+                </div>
+                <table width="100%" cellpadding="0" cellspacing="0" style="border: 1px solid rgba(47,36,58,0.09); border-radius: 12px; overflow: hidden;">
+                  ${detailRows}
+                </table>
+                <a href="${escapeHtml(data.equipmentUrl)}" style="display: inline-block; margin-top: 22px; padding: 12px 20px; border-radius: 12px; background: #588B8B; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 800;">Ver ficha e historial</a>
+              </td></tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>`,
+  });
 }
 
 export async function sendVerificationCode(to: string, name: string, code: string) {

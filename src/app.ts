@@ -11,8 +11,10 @@ const whitelist = [
   "http://localhost:5173",
   "http://localhost:5174",
   "http://localhost:8101",
-  "https://rentabilidad360.netlify.app"
-];
+  "https://rentabilidad360.netlify.app",
+  process.env.FRONTEND_URL,
+  ...(process.env.CORS_ORIGINS || "").split(","),
+].filter((origin): origin is string => Boolean(origin));
 
 const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {

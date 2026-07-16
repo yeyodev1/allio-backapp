@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { listEquipment, createEquipment, updateEquipment, deleteEquipment, getEquipmentDetail, generateQR, scanQRRedirect, listTickets, createTicket, updateTicket, checkOverdue, getPublicEquipmentAudit } from "../controllers/maintenance.controller";
+import { listEquipment, createEquipment, updateEquipment, deleteEquipment, getEquipmentDetail, generateQR, scanQRRedirect, listTickets, createTicket, updateTicket, checkOverdue, getPublicEquipmentAudit, listEquipmentChecklists, createEquipmentChecklist } from "../controllers/maintenance.controller";
 import { authMiddleware } from "../middlewares/auth.middleware";
 export const maintenanceRouter = Router();
 maintenanceRouter.get("/public/equipment/:id", getPublicEquipmentAudit);
@@ -9,6 +9,8 @@ maintenanceRouter.put("/equipment/:id", authMiddleware, updateEquipment);
 maintenanceRouter.delete("/equipment/:id", authMiddleware, deleteEquipment);
 maintenanceRouter.get("/equipment/:id", authMiddleware, getEquipmentDetail);
 maintenanceRouter.post("/equipment/:id/qr", authMiddleware, generateQR);
+maintenanceRouter.get("/equipment/:id/checklists", authMiddleware, listEquipmentChecklists);
+maintenanceRouter.post("/equipment/:id/checklists", authMiddleware, createEquipmentChecklist);
 maintenanceRouter.get("/scan/:qrCode", authMiddleware, scanQRRedirect);
 maintenanceRouter.get("/tickets", authMiddleware, listTickets);
 maintenanceRouter.post("/tickets", authMiddleware, createTicket);

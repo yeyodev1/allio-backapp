@@ -6,29 +6,41 @@ import { Equipment } from "../models/Equipment.model";
 import { MaintenanceTicket } from "../models/MaintenanceTicket.model";
 import { Branch } from "../models/Branch.model";
 import { Company } from "../models/Company.model";
+import { User } from "../models/User.model";
+import { EquipmentChecklist } from "../models/EquipmentChecklist.model";
+import { notifyMaintenanceMovement } from "../services/maintenanceNotification.service";
 
 async function resolveBranchId(userId: string, queryBranchId?: string): Promise<string | null> {
   if (queryBranchId) return queryBranchId;
 
-  const company = await Company.findOne({ userId });
+  const user = await User.findById(userId).select("workspaceIds");
+  const company = user?.workspaceIds?.length
+    ? await Company.findById(user.workspaceIds[0])
+    : await Company.findOne({ userId });
   if (!company) return null;
 
   const mainBranch = await Branch.findOne({ companyId: company._id, isMain: true });
   return mainBranch ? mainBranch._id.toString() : null;
 }
 
-async function getUserCompany(userId: string) {
-  return Company.findOne({ userId });
-}
-
 async function findUserBranch(userId: string, branchId: string) {
-  const company = await getUserCompany(userId);
-  if (!company) return null;
-  return Branch.findOne({ _id: branchId, companyId: company._id });
+  const user = await User.findById(userId).select("workspaceIds");
+  if (!user) return null;
+  const companyIds = user.workspaceIds || [];
+  const ownedCompany = await Company.findOne({ userId }).select("_id");
+  if (ownedCompany && !companyIds.some((id) => id.equals(ownedCompany._id))) {
+    companyIds.push(ownedCompany._id as any);
+  }
+  return Branch.findOne({ _id: branchId, companyId: { $in: companyIds } });
 }
 
 async function isUserBranch(userId: string, branchId: string) {
   return Boolean(await findUserBranch(userId, branchId));
+}
+
+async function userHasRole(userId: string, roles: string[]) {
+  const user = await User.findById(userId).select("role");
+  return Boolean(user && roles.includes(user.role));
 }
 
 async function equipmentWithBranchPayload(equipment: any) {
@@ -129,6 +141,10 @@ export async function createEquipment(req: AuthRequest, res: Response) {
       res.status(401).json({ message: "Unauthorized" });
       return;
     }
+    if (!(await userHasRole(userId, ["admin", "supervisor"]))) {
+      res.status(403).json({ message: "Your role cannot create equipment" });
+      return;
+    }
 
     const branchId = await resolveBranchId(userId, req.body.branchId);
     if (!branchId) {
@@ -178,6 +194,21 @@ export async function createEquipment(req: AuthRequest, res: Response) {
 
     const updated = await Equipment.findById(equipment._id);
 
+    await notifyMaintenanceMovement({
+      actorUserId: userId,
+      branchId,
+      equipmentId: equipment._id.toString(),
+      equipmentName: equipment.name,
+      action: "Equipo registrado",
+      details: [
+        { label: "Estado", value: "Operativo" },
+        { label: "Marca", value: equipment.brand || "Sin marca" },
+        { label: "Ubicación", value: equipment.location || "Sin ubicación" },
+        { label: "Mantenimiento", value: `Cada ${equipment.maintenanceIntervalDays} días` },
+        { label: "Notas", value: equipment.notes },
+      ],
+    });
+
     res.status(201).json(updated);
   } catch (error: any) {
     res.status(500).json({ message: "Error creating equipment", error: error.message });
@@ -189,6 +220,10 @@ export async function updateEquipment(req: AuthRequest, res: Response) {
     const userId = req.user?.userId;
     if (!userId) {
       res.status(401).json({ message: "Unauthorized" });
+      return;
+    }
+    if (!(await userHasRole(userId, ["admin", "supervisor"]))) {
+      res.status(403).json({ message: "Your role cannot modify equipment" });
       return;
     }
 
@@ -222,6 +257,21 @@ export async function updateEquipment(req: AuthRequest, res: Response) {
     }
 
     await equipment.save();
+    const changedLabels: Record<string, string> = {
+      name: "Nombre", brand: "Marca", purchaseDate: "Fecha de compra", historicalCost: "Costo histórico",
+      usefulLife: "Vida útil", maintenanceIntervalDays: "Intervalo de mantenimiento", lastMaintenanceDate: "Último mantenimiento",
+      status: "Estado", notes: "Notas", imageUrl: "Imagen", location: "Ubicación", branchId: "Sucursal",
+    };
+    await notifyMaintenanceMovement({
+      actorUserId: userId,
+      branchId: equipment.branchId.toString(),
+      equipmentId: equipment._id.toString(),
+      equipmentName: equipment.name,
+      action: "Ficha del equipo actualizada",
+      details: Object.keys(req.body)
+        .filter((key) => changedLabels[key])
+        .map((key) => ({ label: changedLabels[key], value: key === "imageUrl" ? "Imagen actualizada" : req.body[key] })),
+    });
     res.json(await equipmentWithBranchPayload(equipment));
   } catch (error: any) {
     res.status(500).json({ message: "Error updating equipment", error: error.message });
@@ -233,6 +283,11 @@ export async function deleteEquipment(req: AuthRequest, res: Response) {
     const userId = req.user?.userId;
     if (!userId) {
       res.status(401).json({ message: "Unauthorized" });
+      return;
+    }
+
+    if (!(await userHasRole(userId, ["admin"]))) {
+      res.status(403).json({ message: "Only administrators can delete equipment" });
       return;
     }
 
@@ -249,6 +304,10 @@ export async function deleteEquipment(req: AuthRequest, res: Response) {
     }
 
     await Equipment.findByIdAndDelete(id);
+    await Promise.all([
+      MaintenanceTicket.deleteMany({ equipmentId: id }),
+      EquipmentChecklist.deleteMany({ equipmentId: id }),
+    ]);
     res.json({ message: "Equipment deleted successfully" });
   } catch (error: any) {
     res.status(500).json({ message: "Error deleting equipment", error: error.message });
@@ -450,6 +509,20 @@ export async function createTicket(req: AuthRequest, res: Response) {
       assignedTo,
     });
 
+    await notifyMaintenanceMovement({
+      actorUserId: userId,
+      branchId: equipment.branchId.toString(),
+      equipmentId: equipment._id.toString(),
+      equipmentName: equipment.name,
+      action: "Mantenimiento reportado",
+      details: [
+        { label: "Descripción", value: ticket.description },
+        { label: "Prioridad", value: ticket.priority },
+        { label: "Estado", value: ticket.status },
+        { label: "Asignado a", value: ticket.assignedTo },
+      ],
+    });
+
     res.status(201).json(ticket);
   } catch (error: any) {
     res.status(500).json({ message: "Error creating ticket", error: error.message });
@@ -477,6 +550,7 @@ export async function updateTicket(req: AuthRequest, res: Response) {
     }
 
     const { status, assignedTo, priority, resolutionNotes } = req.body;
+    const previousStatus = ticket.status;
 
     const validTransitions: Record<string, string[]> = {
       abierto: ["en_progreso"],
@@ -511,9 +585,94 @@ export async function updateTicket(req: AuthRequest, res: Response) {
     if (resolutionNotes !== undefined) ticket.resolutionNotes = resolutionNotes;
 
     await ticket.save();
+    const equipment = await Equipment.findById(ticket.equipmentId).select("name");
+    if (equipment) {
+      await notifyMaintenanceMovement({
+        actorUserId: userId,
+        branchId: ticket.branchId.toString(),
+        equipmentId: equipment._id.toString(),
+        equipmentName: equipment.name,
+        action: "Movimiento de mantenimiento actualizado",
+        details: [
+          { label: "Estado anterior", value: previousStatus },
+          { label: "Estado actual", value: ticket.status },
+          { label: "Prioridad", value: ticket.priority },
+          { label: "Asignado a", value: ticket.assignedTo },
+          { label: "Notas de resolución", value: ticket.resolutionNotes },
+        ],
+      });
+    }
     res.json(ticket);
   } catch (error: any) {
     res.status(500).json({ message: "Error updating ticket", error: error.message });
+  }
+}
+
+export async function listEquipmentChecklists(req: AuthRequest, res: Response) {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) { res.status(401).json({ message: "Unauthorized" }); return; }
+
+    const equipment = await Equipment.findById(req.params.id);
+    if (!equipment) { res.status(404).json({ message: "Equipment not found" }); return; }
+    if (!(await isUserBranch(userId, equipment.branchId.toString()))) {
+      res.status(403).json({ message: "Not authorized to view checklists for this equipment" });
+      return;
+    }
+
+    const checklists = await EquipmentChecklist.find({ equipmentId: equipment._id })
+      .populate("completedBy", "name")
+      .sort({ createdAt: -1 });
+    res.json(checklists);
+  } catch (error: any) {
+    res.status(500).json({ message: "Error listing equipment checklists", error: error.message });
+  }
+}
+
+export async function createEquipmentChecklist(req: AuthRequest, res: Response) {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) { res.status(401).json({ message: "Unauthorized" }); return; }
+
+    const equipment = await Equipment.findById(req.params.id);
+    if (!equipment) { res.status(404).json({ message: "Equipment not found" }); return; }
+    if (!(await isUserBranch(userId, equipment.branchId.toString()))) {
+      res.status(403).json({ message: "Not authorized to complete checklists for this equipment" });
+      return;
+    }
+
+    const items = Array.isArray(req.body.items) ? req.body.items : [];
+    if (!items.length || items.some((item: any) => !item.key || !item.label || typeof item.checked !== "boolean")) {
+      res.status(400).json({ message: "A checklist with valid items is required" });
+      return;
+    }
+
+    const checklist = await EquipmentChecklist.create({
+      equipmentId: equipment._id,
+      branchId: equipment.branchId,
+      completedBy: userId,
+      items,
+      generalNotes: req.body.generalNotes || "",
+      result: items.every((item: any) => item.checked) ? "completo" : "requiere_atencion",
+    });
+    await checklist.populate("completedBy", "name");
+    const checkedCount = items.filter((item: any) => item.checked).length;
+    await notifyMaintenanceMovement({
+      actorUserId: userId,
+      branchId: equipment.branchId.toString(),
+      equipmentId: equipment._id.toString(),
+      equipmentName: equipment.name,
+      action: "Checklist de equipo completado",
+      details: [
+        { label: "Resultado", value: checklist.result === "completo" ? "Completo" : "Requiere atención" },
+        { label: "Puntos correctos", value: `${checkedCount} de ${items.length}` },
+        { label: "Puntos pendientes", value: items.filter((item: any) => !item.checked).map((item: any) => item.label).join(", ") },
+        { label: "Observaciones", value: checklist.generalNotes },
+      ],
+    });
+    res.status(201).json(checklist);
+  } catch (error: any) {
+    res.status(500).json({ message: "Error creating equipment checklist", error: error.message });
   }
 }
 

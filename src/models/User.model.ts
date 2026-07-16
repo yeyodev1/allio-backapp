@@ -26,7 +26,7 @@ const userSchema = new Schema<IUser>(
       trim: true,
     },
     password: { type: String, required: true, minlength: 6 },
-    role: { type: String, enum: ["admin", "operador"], default: "admin" },
+    role: { type: String, enum: ["admin", "supervisor", "operador"], default: "admin" },
     isVerified: { type: Boolean, default: false },
     verificationCode: { type: String, default: null },
     verificationCodeExpires: { type: Date, default: null },

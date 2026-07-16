@@ -9,7 +9,8 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "start": "node dist/index.js",
     "format": "prettier --write 'src/**/*.{js,jsx,ts,tsx,json,css,scss,md}'",
-    "delete-user": "ts-node --compiler-options '{\"rootDir\":\".\"}' scripts/delete-user.ts"
+    "delete-user": "ts-node --compiler-options '{\"rootDir\":\".\"}' scripts/delete-user.ts",
+    "reset-all-users": "ts-node --compiler-options '{\"rootDir\":\".\"}' scripts/reset-all-users.ts"
   },
   "dependencies": {
     "axios": "^1.7.9",

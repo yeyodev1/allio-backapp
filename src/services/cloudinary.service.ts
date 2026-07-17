@@ -17,7 +17,8 @@ function configure() {
   configured = true;
 }
 
-export type UploadFolder = "equipos" | "platillos" | "avatars" | "logos" | "general";
+export const uploadFolders = ["equipos", "platillos", "avatars", "logos", "general", "supervision"] as const;
+export type UploadFolder = (typeof uploadFolders)[number];
 
 export async function uploadImage(
   filePath: string,

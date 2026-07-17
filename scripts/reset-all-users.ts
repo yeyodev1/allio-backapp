@@ -42,6 +42,9 @@ async function run() {
   const { Recipe } = await import("../src/models/Recipe.model");
   const { OnboardingProgress } = await import("../src/models/OnboardingProgress.model");
   const { Tienda } = await import("../src/models/Tienda.model");
+  const { Plant } = await import("../src/models/Plant.model");
+  const { SupervisionTemplate } = await import("../src/models/SupervisionTemplate.model");
+  const { SupervisionSubmission } = await import("../src/models/SupervisionSubmission.model");
 
   // 1. Guardar credenciales de todos los usuarios
   const users = await User.find({}).lean();
@@ -65,6 +68,15 @@ async function run() {
 
   const mt1 = await MaintenanceTicket.deleteMany({});
   console.log(`   MaintenanceTicket: ${mt1.deletedCount}`);
+
+  const ss = await SupervisionSubmission.deleteMany({});
+  console.log(`   SupervisionSubmission: ${ss.deletedCount}`);
+
+  const st = await SupervisionTemplate.deleteMany({});
+  console.log(`   SupervisionTemplate: ${st.deletedCount}`);
+
+  const pl = await Plant.deleteMany({});
+  console.log(`   Plant: ${pl.deletedCount}`);
 
   const eq = await Equipment.deleteMany({});
   console.log(`   Equipment: ${eq.deletedCount}`);

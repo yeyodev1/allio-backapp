@@ -1,14 +1,14 @@
 import { Response } from "express";
 import multer from "multer";
 import { AuthRequest } from "../types/AuthRequest";
-import { uploadImageBuffer, deleteImage, UploadFolder } from "../services/cloudinary.service";
+import { uploadImageBuffer, deleteImage, UploadFolder, uploadFolders } from "../services/cloudinary.service";
 
 const fileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  const allowed = ["image/jpeg", "image/png", "image/webp", "image/svg+xml"];
+  const allowed = ["image/jpeg", "image/png", "image/webp"];
   if (allowed.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error("Solo se permiten imágenes (JPEG, PNG, WebP, SVG)"));
+    cb(new Error("Solo se permiten imágenes raster (JPEG, PNG, WebP)"));
   }
 };
 
@@ -24,7 +24,12 @@ export async function uploadFile(req: AuthRequest, res: Response) {
     return;
   }
 
-  const folder = (req.body.folder as UploadFolder) || "general";
+  const requestedFolder = req.body.folder || "general";
+  if (!uploadFolders.includes(requestedFolder as UploadFolder)) {
+    res.status(400).json({ message: "Carpeta de carga no permitida" });
+    return;
+  }
+  const folder = requestedFolder as UploadFolder;
 
   try {
     const result = await uploadImageBuffer(req.file.buffer, folder);

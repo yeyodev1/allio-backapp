@@ -34,6 +34,9 @@ async function run() {
   const Recipe = (await import("../src/models/Recipe.model")).Recipe;
   const OnboardingProgress = (await import("../src/models/OnboardingProgress.model")).OnboardingProgress;
   const Tienda = (await import("../src/models/Tienda.model")).Tienda;
+  const Plant = (await import("../src/models/Plant.model")).Plant;
+  const SupervisionTemplate = (await import("../src/models/SupervisionTemplate.model")).SupervisionTemplate;
+  const SupervisionSubmission = (await import("../src/models/SupervisionSubmission.model")).SupervisionSubmission;
 
   const user = await User.findOne({ email });
   if (!user) {
@@ -92,6 +95,15 @@ async function run() {
 
     const rc = await Recipe.deleteMany({ companyId });
     if (rc.deletedCount) { deleted.push(`Recipe (${rc.deletedCount})`); console.log(`   🗑 Recipe: ${rc.deletedCount}`); }
+
+    const ss = await SupervisionSubmission.deleteMany({ companyId });
+    if (ss.deletedCount) { deleted.push(`SupervisionSubmission (${ss.deletedCount})`); console.log(`   🗑 SupervisionSubmission: ${ss.deletedCount}`); }
+
+    const st = await SupervisionTemplate.deleteMany({ companyId });
+    if (st.deletedCount) { deleted.push(`SupervisionTemplate (${st.deletedCount})`); console.log(`   🗑 SupervisionTemplate: ${st.deletedCount}`); }
+
+    const pl = await Plant.deleteMany({ companyId });
+    if (pl.deletedCount) { deleted.push(`Plant (${pl.deletedCount})`); console.log(`   🗑 Plant: ${pl.deletedCount}`); }
 
     // 5. Delete branches
     const br = await Branch.deleteMany({ companyId });

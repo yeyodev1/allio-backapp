@@ -6,6 +6,7 @@ import { maintenanceRouter } from "./maintenance.routes";
 import { workspaceRouter } from "./workspace.routes";
 import { costingRouter } from "./costing.routes";
 import { uploadRouter } from "./upload.routes";
+import { supervisionRouter } from "./supervision.routes";
 
 function routerApi(app: Application) {
   const router = express.Router();
@@ -18,6 +19,7 @@ function routerApi(app: Application) {
   router.use("/workspace", workspaceRouter);
   router.use("/costing", costingRouter);
   router.use("/upload", uploadRouter);
+  router.use("/supervision", supervisionRouter);
 }
 
 export default routerApi;

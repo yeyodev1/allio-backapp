@@ -1,4 +1,4 @@
-import { Response } from "express";
+import { Response, NextFunction } from "express";
 import multer from "multer";
 import { AuthRequest } from "../types/AuthRequest";
 import { uploadImageBuffer, deleteImage, UploadFolder, uploadFolders } from "../services/cloudinary.service";
@@ -12,11 +12,39 @@ const fileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterC
   }
 };
 
-export const uploadMiddleware = multer({
+const upload = multer({
   storage: multer.memoryStorage(),
   fileFilter,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  // Vercel corta la petición en 4,5 MB antes de que la función corra, así que
+  // este tope solo actúa en local. El cliente reduce las fotos antes de subirlas.
+  limits: { fileSize: 10 * 1024 * 1024 },
 }).single("file");
+
+/**
+ * Envuelve a multer para traducir sus errores.
+ *
+ * Sin esto, subir un PDF o un archivo enorme salía como 500: el error del
+ * `fileFilter` llegaba al manejador global y se reportaba como fallo del
+ * servidor, cuando es el usuario quien mandó algo que no toca.
+ */
+export function uploadMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
+  upload(req as any, res as any, (err: unknown) => {
+    if (!err) return next();
+
+    if (err instanceof multer.MulterError) {
+      const message =
+        err.code === "LIMIT_FILE_SIZE"
+          ? "La imagen supera el tamaño máximo permitido."
+          : "No se pudo procesar el archivo enviado.";
+      res.status(400).json({ message });
+      return;
+    }
+
+    res.status(400).json({
+      message: err instanceof Error ? err.message : "Archivo no válido",
+    });
+  });
+}
 
 export async function uploadFile(req: AuthRequest, res: Response) {
   if (!req.file) {

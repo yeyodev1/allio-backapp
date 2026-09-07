@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document } from "mongoose";
+import { geoStampSchema, IGeoStamp } from "./geo.schema";
 import { SupervisionFrequency, SupervisionTargetType } from "./SupervisionTemplate.model";
 
 export type SupervisionAnswerStatus = "si" | "no" | "no_aplica";
@@ -43,6 +44,7 @@ export interface ISupervisionSubmission extends Document {
       items: Array<{ key: string; label: string }>;
     }>;
   };
+  geo?: IGeoStamp;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -123,6 +125,7 @@ const supervisionSubmissionSchema = new Schema<ISupervisionSubmission>(
     answers: { type: [answerSchema], required: true },
     evidence: { type: [evidenceSchema], required: true },
     templateSnapshot: { type: templateSnapshotSchema, required: true },
+    geo: { type: geoStampSchema },
   },
   { timestamps: true }
 );

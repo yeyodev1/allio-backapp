@@ -5,13 +5,37 @@ const FROM_EMAIL = `notificaciones@${FROM_DOMAIN}`;
 
 let resend: Resend | null = null;
 
-function getClient(): Resend {
+/** El envío de correo es opcional: sin API key la app funciona, solo no notifica. */
+export function isEmailConfigured(): boolean {
+  return Boolean(process.env.RESEND_API_KEY);
+}
+
+function getClient(): Resend | null {
   const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) throw new Error("RESEND_API_KEY is not configured");
+  if (!apiKey) return null;
   if (!resend) {
     resend = new Resend(apiKey);
   }
   return resend;
+}
+
+/**
+ * Envuelve el envío para que una caída del proveedor de correo nunca haga fallar
+ * la operación de negocio que lo disparó. Devuelve si se llegó a enviar.
+ */
+async function send(payload: Parameters<Resend["emails"]["send"]>[0]): Promise<boolean> {
+  const client = getClient();
+  if (!client) {
+    console.warn("[Email] RESEND_API_KEY sin configurar: se omite el envío.");
+    return false;
+  }
+  try {
+    await client.emails.send(payload);
+    return true;
+  } catch (error) {
+    console.error("[Email] Fallo al enviar:", error instanceof Error ? error.message : error);
+    return false;
+  }
 }
 
 function escapeHtml(value: unknown): string {
@@ -44,12 +68,12 @@ export async function sendMaintenanceMovementEmail(data: MaintenanceMovementEmai
     .filter((detail) => detail.value !== undefined && detail.value !== null && detail.value !== "")
     .map((detail) => `
       <tr>
-        <td style="padding: 9px 12px; color: #588B8B; font-size: 12px; font-weight: 700; vertical-align: top;">${escapeHtml(detail.label)}</td>
-        <td style="padding: 9px 12px; color: #2F243A; font-size: 13px; line-height: 1.45;">${escapeHtml(detail.value)}</td>
+        <td style="padding: 9px 12px; color: #CC5803; font-size: 12px; font-weight: 700; vertical-align: top;">${escapeHtml(detail.label)}</td>
+        <td style="padding: 9px 12px; color: #2A2522; font-size: 13px; line-height: 1.45;">${escapeHtml(detail.value)}</td>
       </tr>`)
     .join("");
 
-  await getClient().emails.send({
+  return send({
     from: `Allio Mantenimiento <${FROM_EMAIL}>`,
     to: recipients,
     subject: `${data.action} · ${data.equipmentName}`,
@@ -61,21 +85,21 @@ export async function sendMaintenanceMovementEmail(data: MaintenanceMovementEmai
         <table width="100%" cellpadding="0" cellspacing="0">
           <tr><td align="center">
             <table width="600" cellpadding="0" cellspacing="0" style="max-width: 100%; background: #ffffff; border-radius: 20px; overflow: hidden;">
-              <tr><td style="padding: 28px 32px; background: #2F243A;">
-                <p style="margin: 0 0 7px; color: #8AC926; font-size: 12px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase;">Movimiento de mantenimiento</p>
+              <tr><td style="padding: 28px 32px; background: #2A2522;">
+                <p style="margin: 0 0 7px; color: #FFF6EE; font-size: 12px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase;">Movimiento de mantenimiento</p>
                 <h1 style="margin: 0; color: #ffffff; font-size: 22px;">${escapeHtml(data.action)}</h1>
               </td></tr>
               <tr><td style="padding: 28px 32px;">
-                <h2 style="margin: 0 0 6px; color: #2F243A; font-size: 19px;">${escapeHtml(data.equipmentName)}</h2>
-                <p style="margin: 0 0 22px; color: #588B8B; font-size: 13px;">${escapeHtml(data.branchName)} · ${escapeHtml(data.occurredAt.toLocaleString("es-EC", { timeZone: "America/Guayaquil" }))}</p>
+                <h2 style="margin: 0 0 6px; color: #2A2522; font-size: 19px;">${escapeHtml(data.equipmentName)}</h2>
+                <p style="margin: 0 0 22px; color: #CC5803; font-size: 13px;">${escapeHtml(data.branchName)} · ${escapeHtml(data.occurredAt.toLocaleString("es-EC", { timeZone: "America/Guayaquil" }))}</p>
                 <div style="padding: 14px 16px; background: #FFF6EE; border-radius: 14px; margin-bottom: 20px;">
-                  <strong style="display: block; color: #2F243A; font-size: 14px;">Registrado por ${escapeHtml(data.actorName)}</strong>
-                  <span style="color: #588B8B; font-size: 12px;">${escapeHtml(data.actorEmail)} · ${escapeHtml(data.actorRole)}</span>
+                  <strong style="display: block; color: #2A2522; font-size: 14px;">Registrado por ${escapeHtml(data.actorName)}</strong>
+                  <span style="color: #CC5803; font-size: 12px;">${escapeHtml(data.actorEmail)} · ${escapeHtml(data.actorRole)}</span>
                 </div>
                 <table width="100%" cellpadding="0" cellspacing="0" style="border: 1px solid rgba(47,36,58,0.09); border-radius: 12px; overflow: hidden;">
                   ${detailRows}
                 </table>
-                <a href="${escapeHtml(data.equipmentUrl)}" style="display: inline-block; margin-top: 22px; padding: 12px 20px; border-radius: 12px; background: #588B8B; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 800;">Ver ficha e historial</a>
+                <a href="${escapeHtml(data.equipmentUrl)}" style="display: inline-block; margin-top: 22px; padding: 12px 20px; border-radius: 12px; background: #CC5803; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 800;">Ver ficha e historial</a>
               </td></tr>
             </table>
           </td></tr>
@@ -87,7 +111,7 @@ export async function sendMaintenanceMovementEmail(data: MaintenanceMovementEmai
 
 export async function sendVerificationCode(to: string, name: string, code: string) {
   try {
-    await getClient().emails.send({
+    return send({
       from: `Allio <${FROM_EMAIL}>`,
       to,
       subject: "Tu código de verificación · Allio",
@@ -101,18 +125,18 @@ export async function sendVerificationCode(to: string, name: string, code: strin
               <td align="center" style="padding: 40px 16px;">
                 <table width="480" cellpadding="0" cellspacing="0" style="background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.06);">
                   <tr>
-                    <td style="background: linear-gradient(135deg, #588B8B, #7BA3A3); padding: 32px; text-align: center;">
+                    <td style="background: linear-gradient(135deg, #CC5803, #D9803E); padding: 32px; text-align: center;">
                       <h1 style="color: #ffffff; font-size: 24px; margin: 0;">Allio</h1>
                       <p style="color: rgba(255,255,255,0.85); font-size: 14px; margin: 8px 0 0;">Verifica tu correo electrónico</p>
                     </td>
                   </tr>
                   <tr>
                     <td style="padding: 32px; text-align: center;">
-                      <h2 style="color: #2F243A; font-size: 20px; margin: 0 0 12px;">¡Hola ${name}!</h2>
+                      <h2 style="color: #2A2522; font-size: 20px; margin: 0 0 12px;">¡Hola ${name}!</h2>
                       <p style="color: #6b7f8b; font-size: 14px; line-height: 1.6; margin: 0 0 24px;">
                         Usa el siguiente código para verificar tu cuenta:
                       </p>
-                      <div style="background: #FFF6EE; border-radius: 12px; padding: 20px; margin: 0 0 24px; letter-spacing: 8px; font-size: 32px; font-weight: 800; color: #588B8B; font-family: monospace;">
+                      <div style="background: #FFF6EE; border-radius: 12px; padding: 20px; margin: 0 0 24px; letter-spacing: 8px; font-size: 32px; font-weight: 800; color: #CC5803; font-family: monospace;">
                         ${code}
                       </div>
                       <p style="color: #6b7f8b; font-size: 12px; line-height: 1.5; margin: 0;">
@@ -144,7 +168,7 @@ export async function sendVerificationCode(to: string, name: string, code: strin
 
 export async function sendWelcomeEmail(to: string, name: string) {
   try {
-    await getClient().emails.send({
+    return send({
       from: `Allio <${FROM_EMAIL}>`,
       to,
       subject: "¡Bienvenido a Allio!",
@@ -158,18 +182,18 @@ export async function sendWelcomeEmail(to: string, name: string) {
               <td align="center" style="padding: 40px 16px;">
                 <table width="480" cellpadding="0" cellspacing="0" style="background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.06);">
                   <tr>
-                    <td style="background: linear-gradient(135deg, #588B8B, #7BA3A3); padding: 32px; text-align: center;">
+                    <td style="background: linear-gradient(135deg, #CC5803, #D9803E); padding: 32px; text-align: center;">
                       <h1 style="color: #ffffff; font-size: 24px; margin: 0;">Allio</h1>
                       <p style="color: rgba(255,255,255,0.85); font-size: 14px; margin: 8px 0 0;">Diagnóstico financiero para tu restaurante</p>
                     </td>
                   </tr>
                   <tr>
                     <td style="padding: 32px;">
-                      <h2 style="color: #2F243A; font-size: 20px; margin: 0 0 12px;">¡Hola ${name}!</h2>
+                      <h2 style="color: #2A2522; font-size: 20px; margin: 0 0 12px;">¡Hola ${name}!</h2>
                       <p style="color: #6b7f8b; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
                         Bienvenido a Allio. Ya puedes empezar a diagnosticar tu restaurante y descubrir oportunidades para mejorar tu rentabilidad.
                       </p>
-                      <a href="https://${FROM_DOMAIN}/onboarding" style="display: inline-block; background: linear-gradient(135deg, #588B8B, #7BA3A3); color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: 700; font-size: 14px;">
+                      <a href="https://${FROM_DOMAIN}/onboarding" style="display: inline-block; background: linear-gradient(135deg, #CC5803, #D9803E); color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: 700; font-size: 14px;">
                         Comenzar diagnóstico
                       </a>
                     </td>
@@ -197,7 +221,7 @@ export async function sendWelcomeEmail(to: string, name: string) {
 
 export async function sendAlertEmail(to: string, subject: string, message: string) {
   try {
-    await getClient().emails.send({
+    return send({
       from: `Allio Alertas <${FROM_EMAIL}>`,
       to,
       subject: `⚠️ ${subject}`,
@@ -217,9 +241,9 @@ export async function sendAlertEmail(to: string, subject: string, message: strin
                   </tr>
                   <tr>
                     <td style="padding: 32px;">
-                      <h2 style="color: #2F243A; font-size: 18px; margin: 0 0 12px;">${subject}</h2>
+                      <h2 style="color: #2A2522; font-size: 18px; margin: 0 0 12px;">${subject}</h2>
                       <p style="color: #6b7f8b; font-size: 14px; line-height: 1.6; margin: 0;">${message}</p>
-                      <a href="https://${FROM_DOMAIN}/dashboard" style="display: inline-block; margin-top: 20px; background: #588B8B; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: 700; font-size: 14px;">
+                      <a href="https://${FROM_DOMAIN}/dashboard" style="display: inline-block; margin-top: 20px; background: #CC5803; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: 700; font-size: 14px;">
                         Ver dashboard
                       </a>
                     </td>
@@ -240,7 +264,7 @@ export async function sendAlertEmail(to: string, subject: string, message: strin
 
 export async function sendReminderEmail(to: string, subject: string, message: string, ctaLabel?: string, ctaLink?: string) {
   try {
-    await getClient().emails.send({
+    return send({
       from: `Allio <${FROM_EMAIL}>`,
       to,
       subject: `📌 Recordatorio: ${subject}`,
@@ -260,9 +284,9 @@ export async function sendReminderEmail(to: string, subject: string, message: st
                   </tr>
                   <tr>
                     <td style="padding: 32px;">
-                      <h2 style="color: #2F243A; font-size: 18px; margin: 0 0 12px;">${subject}</h2>
+                      <h2 style="color: #2A2522; font-size: 18px; margin: 0 0 12px;">${subject}</h2>
                       <p style="color: #6b7f8b; font-size: 14px; line-height: 1.6; margin: 0;">${message}</p>
-                      ${ctaLabel && ctaLink ? `<a href="${ctaLink}" style="display: inline-block; margin-top: 20px; background: #588B8B; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: 700; font-size: 14px;">${ctaLabel}</a>` : ""}
+                      ${ctaLabel && ctaLink ? `<a href="${ctaLink}" style="display: inline-block; margin-top: 20px; background: #CC5803; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: 700; font-size: 14px;">${ctaLabel}</a>` : ""}
                     </td>
                   </tr>
                 </table>

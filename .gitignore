@@ -1,5 +1,7 @@
-node_modules
-dist
 .env
-uploads
+.env*
+.env.local
 .vercel
+dist
+node_modules
+uploads

@@ -9,6 +9,8 @@ import { Company } from "../models/Company.model";
 import { User } from "../models/User.model";
 import { EquipmentChecklist } from "../models/EquipmentChecklist.model";
 import { notifyMaintenanceMovement } from "../services/maintenanceNotification.service";
+import { listUserBranchIds } from "../services/access.service";
+import { buildGeoStamp } from "../models/geo.schema";
 
 async function resolveBranchId(userId: string, queryBranchId?: string): Promise<string | null> {
   if (queryBranchId) return queryBranchId;
@@ -115,18 +117,27 @@ export async function listEquipment(req: AuthRequest, res: Response) {
       return;
     }
 
-    const branchId = await resolveBranchId(userId, req.query.branchId as string);
-    if (!branchId) {
-      res.status(400).json({ message: "No branch found" });
-      return;
+    const requested = req.query.branchId as string | undefined;
+
+    // Sin filtro se devuelven los equipos de TODOS los locales del usuario.
+    // Antes caía en la sucursal principal y el panel contaba 2 equipos cuando la
+    // empresa tenía 5, que es peor que no mostrar el dato.
+    let branchIds: unknown[];
+    if (requested) {
+      if (!(await isUserBranch(userId, requested))) {
+        res.status(403).json({ message: "Not authorized to list this branch" });
+        return;
+      }
+      branchIds = [requested];
+    } else {
+      branchIds = await listUserBranchIds(userId);
+      if (branchIds.length === 0) {
+        res.json([]);
+        return;
+      }
     }
 
-    if (!(await isUserBranch(userId, branchId))) {
-      res.status(403).json({ message: "Not authorized to list this branch" });
-      return;
-    }
-
-    const equipment = await Equipment.find({ branchId }).sort({ name: 1 });
+    const equipment = await Equipment.find({ branchId: { $in: branchIds } }).sort({ name: 1 });
     const payload = await Promise.all(equipment.map((item) => equipmentWithBranchPayload(item)));
     res.json(payload);
   } catch (error: any) {
@@ -449,17 +460,21 @@ export async function listTickets(req: AuthRequest, res: Response) {
         return;
       }
       filter.equipmentId = new mongoose.Types.ObjectId(equipmentId);
+    } else if (req.query.branchId) {
+      if (!(await isUserBranch(userId, req.query.branchId as string))) {
+        res.status(403).json({ message: "No tienes acceso a este local" });
+        return;
+      }
+      filter.branchId = req.query.branchId;
     } else {
-      const branchId = await resolveBranchId(userId, req.query.branchId as string);
-      if (!branchId) {
-        res.status(400).json({ message: "No branch found" });
+      // Sin filtro se ven las fallas de todos los locales del usuario. Antes caía
+      // en la sucursal principal y el panel escondía las averías del resto.
+      const branchIds = await listUserBranchIds(userId);
+      if (branchIds.length === 0) {
+        res.json([]);
         return;
       }
-      if (!(await isUserBranch(userId, branchId))) {
-        res.status(403).json({ message: "Not authorized to list this branch" });
-        return;
-      }
-      filter.branchId = branchId;
+      filter.branchId = { $in: branchIds };
     }
 
     const tickets = await MaintenanceTicket.find(filter)
@@ -481,10 +496,10 @@ export async function createTicket(req: AuthRequest, res: Response) {
       return;
     }
 
-    const { equipmentId, description, priority, assignedTo } = req.body;
+    const { equipmentId, description, priority, assignedTo, title } = req.body;
 
-    if (!equipmentId || !description) {
-      res.status(400).json({ message: "equipmentId and description are required" });
+    if (!equipmentId || !String(description || "").trim()) {
+      res.status(400).json({ message: "Describe qué le pasa al equipo" });
       return;
     }
 
@@ -499,15 +514,27 @@ export async function createTicket(req: AuthRequest, res: Response) {
       return;
     }
 
+    // La falla se sella igual que el resto de registros: dónde y con qué fotos.
+    const branch = await Branch.findById(equipment.branchId).select("coordinates").lean();
+
     const ticket = await maintenanceService.createTicket({
       equipmentId,
       branchId: equipment.branchId.toString(),
       reportedBy: userId,
-      title: `Ticket: ${equipment.name}`,
-      description,
+      // Un título escrito por quien reporta vale mucho más que "Ticket: <equipo>",
+      // que era lo que se guardaba antes y no decía nada en el listado.
+      title: String(title || "").trim() || String(description).trim().slice(0, 70),
+      description: String(description).trim(),
       priority: priority || "media",
       assignedTo,
+      photos: Array.isArray(req.body.photos) ? req.body.photos : [],
+      geo: buildGeoStamp(req.body.geo, branch?.coordinates || null),
     });
+
+    // Reportar una falla cambia el estado del equipo: es la señal que busca el panel.
+    if (equipment.status === "operativo") {
+      await Equipment.findByIdAndUpdate(equipment._id, { $set: { status: "averiado" } });
+    }
 
     await notifyMaintenanceMovement({
       actorUserId: userId,
@@ -552,10 +579,14 @@ export async function updateTicket(req: AuthRequest, res: Response) {
     const { status, assignedTo, priority, resolutionNotes } = req.body;
     const previousStatus = ticket.status;
 
+    // Arreglar algo en el momento es lo normal, así que "abierto → resuelto" tiene
+    // que ser posible sin pasar por "en progreso". Y una falla resuelta puede
+    // reaparecer a los dos días: reabrirla es mejor que crear un ticket nuevo que
+    // pierde el hilo de lo que ya se intentó.
     const validTransitions: Record<string, string[]> = {
-      abierto: ["en_progreso"],
-      en_progreso: ["resuelto"],
-      resuelto: ["cerrado"],
+      abierto: ["en_progreso", "resuelto"],
+      en_progreso: ["resuelto", "abierto"],
+      resuelto: ["cerrado", "en_progreso"],
       cerrado: [],
     };
 
@@ -570,6 +601,7 @@ export async function updateTicket(req: AuthRequest, res: Response) {
       ticket.status = status;
       if (status === "resuelto") {
         ticket.resolvedAt = new Date();
+        ticket.resolvedBy = new mongoose.Types.ObjectId(userId);
       }
     }
 

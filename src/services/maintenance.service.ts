@@ -19,7 +19,7 @@ export function calculateDepreciation(purchaseDate: Date, historicalCost: number
 }
 
 export function getEquipmentPublicUrl(equipmentId: string, frontendBaseUrl?: string): string {
-  const rawBase = frontendBaseUrl || process.env.FRONTEND_URL || "https://rentabilidad360.netlify.app";
+  const rawBase = frontendBaseUrl || process.env.FRONTEND_URL || "http://localhost:5173";
   const base = rawBase.replace(/\/+$/, "");
   return `${base}/modulo/mantenimiento/${equipmentId}`;
 }
@@ -95,6 +95,8 @@ export async function createTicket(data: {
   description: string;
   priority: "baja" | "media" | "alta" | "critica";
   assignedTo?: string;
+  photos?: string[];
+  geo?: unknown;
 }): Promise<typeof MaintenanceTicket.prototype> {
   const ticket = await MaintenanceTicket.create({
     equipmentId: new mongoose.Types.ObjectId(data.equipmentId),
@@ -104,6 +106,8 @@ export async function createTicket(data: {
     description: data.description,
     priority: data.priority || "media",
     assignedTo: data.assignedTo,
+    photos: data.photos || [],
+    geo: data.geo,
     status: "abierto",
   });
 

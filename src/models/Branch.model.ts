@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document } from "mongoose";
+import { coordinatesSchema, ICoordinates } from "./geo.schema";
 
 export interface IBranch extends Document {
   companyId: mongoose.Types.ObjectId;
@@ -7,6 +8,8 @@ export interface IBranch extends Document {
   phone?: string;
   isMain: boolean;
   isActive: boolean;
+  /** Punto de referencia del local. Sin él no se puede medir si un registro se hizo fuera. */
+  coordinates?: ICoordinates;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -19,6 +22,7 @@ const branchSchema = new Schema<IBranch>(
     phone: { type: String, trim: true },
     isMain: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },
+    coordinates: { type: coordinatesSchema },
   },
   { timestamps: true }
 );

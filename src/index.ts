@@ -7,8 +7,10 @@ import { createApp } from "./app";
 const { app, server } = createApp();
 const port = process.env.PORT || 8100;
 
+// Se lanza al arrancar para que el proceso local ya tenga conexión, pero sin
+// depender de ello: el middleware del router la garantiza en cada petición.
 dbConnect().catch((err) => {
-  console.error("DB init error:", err);
+  console.error("No se pudo conectar a MongoDB al arrancar:", err.message);
 });
 
 if (!process.env.VERCEL) {

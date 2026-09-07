@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document } from "mongoose";
+import { geoStampSchema, IGeoStamp } from "./geo.schema";
 
 export interface IMaintenanceTicket extends Document {
   equipmentId: mongoose.Types.ObjectId;
@@ -10,7 +11,10 @@ export interface IMaintenanceTicket extends Document {
   assignedTo?: string;
   priority: "baja" | "media" | "alta" | "critica";
   resolvedAt?: Date;
+  resolvedBy?: mongoose.Types.ObjectId;
   resolutionNotes?: string;
+  photos: string[];
+  geo?: IGeoStamp;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -34,7 +38,10 @@ const maintenanceTicketSchema = new Schema<IMaintenanceTicket>(
       default: "media",
     },
     resolvedAt: { type: Date },
+    resolvedBy: { type: Schema.Types.ObjectId, ref: "User" },
     resolutionNotes: { type: String, trim: true },
+    photos: { type: [String], default: [] },
+    geo: { type: geoStampSchema },
   },
   { timestamps: true }
 );

@@ -33,7 +33,7 @@ export async function notifyMaintenanceMovement(input: MovementNotificationInput
       $or: [{ _id: company.userId }, { workspaceIds: company._id }],
     }).select("email").lean();
 
-    const frontendUrl = (process.env.FRONTEND_URL || "https://rentabilidad360.netlify.app").replace(/\/$/, "");
+    const frontendUrl = (process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, "");
     await sendMaintenanceMovementEmail({
       recipients: [actor.email, ...admins.map((admin) => admin.email)],
       action: input.action,

@@ -4,6 +4,8 @@ import { AuthRequest } from "../types/AuthRequest";
 import { User } from "../models/User.model";
 import { Company } from "../models/Company.model";
 import { Branch } from "../models/Branch.model";
+import { resolveDefaultBranchId } from "../services/access.service";
+import { buildGeoStamp, geoStampSchema, OFFSITE_THRESHOLD_M } from "../models/geo.schema";
 import { Plant } from "../models/Plant.model";
 import {
   ISupervisionTemplate,
@@ -271,14 +273,32 @@ function templateSnapshot(template: ISupervisionTemplate) {
 export async function bootstrapSupervision(req: AuthRequest, res: Response) {
   try {
     const userId = req.user?.userId;
-    const branchId = req.query.branchId;
     if (!userId) { res.status(401).json({ message: "Unauthorized" }); return; }
-    if (!isObjectId(branchId)) { res.status(400).json({ message: "branchId valido es requerido" }); return; }
 
     const access = await getAccess(userId);
-    if (!access || !access.companyIds.length) { res.status(403).json({ message: "No tienes acceso a una empresa" }); return; }
+
+    // Sin empresa o sin locales todavía: es un estado vacío, no un error. La
+    // pantalla lo usa para invitar a completar la configuración.
+    if (!access || !access.companyIds.length) {
+      res.json({ plants: [], templates: [], submissions: [], needsCompany: true });
+      return;
+    }
+
+    // El frontend puede no traer local (al entrar al módulo sin haber elegido uno).
+    // Antes eso devolvía 400 y la pantalla quedaba rota; ahora se resuelve el
+    // principal, igual que hacen el resto de endpoints vía access.service.
+    const requested = req.query.branchId;
+    const branchId = isObjectId(requested)
+      ? String(requested)
+      : await resolveDefaultBranchId(userId);
+
+    if (!branchId) {
+      res.json({ plants: [], templates: [], submissions: [], needsBranch: true });
+      return;
+    }
+
     const branch = await companyForBranch(branchId, access.companyIds);
-    if (!branch) { res.status(403).json({ message: "No tienes acceso a esta sucursal" }); return; }
+    if (!branch) { res.status(403).json({ message: "No tienes acceso a este local" }); return; }
 
     const companyId = branch.companyId.toString();
     await seedDefaultTemplates(companyId);
@@ -291,7 +311,7 @@ export async function bootstrapSupervision(req: AuthRequest, res: Response) {
         .limit(50),
     ]);
 
-    res.json({ plants, templates, submissions });
+    res.json({ plants, templates, submissions, branchId: branch._id, branchName: branch.name });
   } catch (error: any) {
     res.status(500).json({ message: "Error loading supervision", error: error.message });
   }
@@ -404,6 +424,13 @@ export async function createSubmission(req: AuthRequest, res: Response) {
       return;
     }
 
+    // La visita se sella con el punto desde el que se envió. Contra el local si lo
+    // hay; una planta no tiene coordenadas de referencia, así que ahí solo se guarda.
+    const branchCoords = targetType === "branch"
+      ? (await Branch.findById(branchId).select("coordinates").lean())?.coordinates || null
+      : null;
+    const geo = buildGeoStamp(req.body.geo, branchCoords);
+
     const targetId = targetType === "branch" ? branchId : plantId;
     const targetKey = `${targetType}:${targetId}`;
     const applicableAnswers = snapshotAnswers.filter((answer) => answer.status !== "no_aplica");
@@ -418,6 +445,7 @@ export async function createSubmission(req: AuthRequest, res: Response) {
       branchId: targetType === "branch" ? branchId : undefined,
       plantId: targetType === "plant" ? plantId : undefined,
       targetKey,
+      geo,
       businessDate,
       score,
       result,

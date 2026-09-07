@@ -31,8 +31,9 @@ export async function listIngredients(req: AuthRequest, res: Response) {
     const userId = req.user?.userId;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
+    // Sin empresa todavía no hay error: simplemente no hay nada que listar.
     const companyId = await resolveCompanyId(userId);
-    if (!companyId) return res.status(400).json({ message: "No company found" });
+    if (!companyId) return res.json([]);
 
     const ingredients = await Ingredient.find({ companyId }).sort({ name: 1 });
     res.json(ingredients);
@@ -47,7 +48,7 @@ export async function createIngredient(req: AuthRequest, res: Response) {
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     const companyId = await resolveCompanyId(userId);
-    if (!companyId) return res.status(400).json({ message: "No company found" });
+    if (!companyId) return res.status(400).json({ message: "Primero registra los datos de tu empresa" });
 
     const { name, unitOfMeasure, costPrice, wastePercentage } = req.body;
 
@@ -97,8 +98,9 @@ export async function listRecipes(req: AuthRequest, res: Response) {
     const userId = req.user?.userId;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
+    // Sin empresa todavía no hay error: simplemente no hay nada que listar.
     const companyId = await resolveCompanyId(userId);
-    if (!companyId) return res.status(400).json({ message: "No company found" });
+    if (!companyId) return res.json([]);
 
     const recipes = await Recipe.find({ companyId }).populate("ingredients.ingredientId").sort({ name: 1 });
     const { fixedCost, activeDishCount } = await buildSuggestionContext(companyId);
@@ -121,7 +123,7 @@ export async function createRecipe(req: AuthRequest, res: Response) {
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     const companyId = await resolveCompanyId(userId);
-    if (!companyId) return res.status(400).json({ message: "No company found" });
+    if (!companyId) return res.status(400).json({ message: "Primero registra los datos de tu empresa" });
 
     const { name, sellingPrice, productionCost, ingredients, wastePercentage, isActive, validityDays } = req.body;
 
@@ -166,7 +168,7 @@ export async function estimatePrice(req: AuthRequest, res: Response) {
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     const companyId = await resolveCompanyId(userId);
-    if (!companyId) return res.status(400).json({ message: "No company found" });
+    if (!companyId) return res.status(400).json({ message: "Primero registra los datos de tu empresa" });
 
     const { productionCost, validityDays } = req.body;
     if (productionCost == null) {

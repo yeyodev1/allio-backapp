@@ -3,7 +3,7 @@ import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { User } from "../models/User.model";
 import { Company } from "../models/Company.model";
-import { sendVerificationCode, sendWelcomeEmail } from "../services/email.service";
+import { sendVerificationCode, sendWelcomeEmail, isEmailConfigured } from "../services/email.service";
 
 function generateCode(): string {
   return crypto.randomInt(100000, 999999).toString();
@@ -49,11 +49,17 @@ export async function register(req: Request, res: Response) {
     });
     await user.save();
 
-    await sendVerificationCode(email, name, code);
+    const sent = await sendVerificationCode(email, name, code);
 
+    // Si el correo no salió, decirlo. Antes esto reventaba con un 500 y el
+    // usuario se quedaba con una cuenta creada que no podía verificar.
     res.status(201).json({
-      message: "Te enviamos un código de verificación a tu correo",
+      message: sent
+        ? "Te enviamos un código de verificación a tu correo"
+        : "Tu cuenta se creó, pero no pudimos enviarte el código. Pide a un administrador que active tu cuenta.",
       email: user.email,
+      emailSent: sent,
+      emailConfigured: isEmailConfigured(),
     });
   } catch (err: any) {
     console.error("[Auth] Register error:", err);

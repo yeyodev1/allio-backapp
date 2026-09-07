@@ -1,5 +1,5 @@
 {
-  "name": "rentabilidad360-backapp",
+  "name": "allio-backapp",
   "version": "1.0.0",
   "description": "",
   "main": "dist/index.js",
@@ -10,7 +10,8 @@
     "start": "node dist/index.js",
     "format": "prettier --write 'src/**/*.{js,jsx,ts,tsx,json,css,scss,md}'",
     "delete-user": "ts-node --compiler-options '{\"rootDir\":\".\"}' scripts/delete-user.ts",
-    "reset-all-users": "ts-node --compiler-options '{\"rootDir\":\".\"}' scripts/reset-all-users.ts"
+    "reset-all-users": "ts-node --compiler-options '{\"rootDir\":\".\"}' scripts/reset-all-users.ts",
+    "migrate": "ts-node --compiler-options '{\"rootDir\":\".\"}' scripts/migrate-allio.ts"
   },
   "dependencies": {
     "axios": "^1.7.9",
@@ -22,13 +23,8 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.9.5",
     "multer": "^2.1.1",
-    "multer-storage-cloudinary": "^4.0.0",
-    "node-cron": "^4.2.1",
-    "pdfkit": "^0.18.0",
     "qrcode": "^1.5.4",
-    "resend": "^6.14.0",
-    "sharp": "^0.34.5",
-    "uuid": "^14.0.0"
+    "resend": "^6.14.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
@@ -37,10 +33,7 @@
     "@types/jsonwebtoken": "^9.0.7",
     "@types/multer": "^2.1.0",
     "@types/node": "^22.10.5",
-    "@types/node-cron": "^3.0.11",
-    "@types/pdfkit": "^0.17.6",
     "@types/qrcode": "^1.5.6",
-    "@types/uuid": "^10.0.0",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.7.3"
   },

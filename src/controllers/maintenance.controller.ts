@@ -10,6 +10,7 @@ import { User } from "../models/User.model";
 import { EquipmentChecklist } from "../models/EquipmentChecklist.model";
 import { notifyMaintenanceMovement } from "../services/maintenanceNotification.service";
 import { listUserBranchIds } from "../services/access.service";
+import { buildEquipmentTimeline } from "../services/timeline.service";
 import { buildGeoStamp } from "../models/geo.schema";
 
 async function resolveBranchId(userId: string, queryBranchId?: string): Promise<string | null> {
@@ -59,6 +60,19 @@ function frontendBaseUrlFromRequest(req: AuthRequest): string | undefined {
   return typeof origin === "string" ? origin : undefined;
 }
 
+/**
+ * GET /api/maintenance/public/equipment/:id — sin autenticación.
+ *
+ * Es lo que abre el QR pegado en la máquina. Quien lo escanea está físicamente
+ * delante del equipo, así que ve su bitácora completa: revisiones, traspasos,
+ * fallas y mantenimientos.
+ *
+ * Lo que NO ve es el dinero. Antes esta respuesta incluía `historicalCost` y
+ * `depreciationValue`, de modo que cualquiera que fotografiara el QR conocía lo
+ * que costó la máquina y su valor en libros. Un técnico frente al equipo no
+ * necesita esa cifra para hacer su trabajo, y quien pasa por la tienda tampoco.
+ * El costo de las reparaciones se omite por lo mismo.
+ */
 export async function getPublicEquipmentAudit(req: AuthRequest, res: Response) {
   try {
     const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
@@ -68,44 +82,46 @@ export async function getPublicEquipmentAudit(req: AuthRequest, res: Response) {
       : null;
 
     if (!equipment) {
-      res.status(404).json({ message: "Equipment not found" });
+      res.status(404).json({ message: "Este equipo no existe o el código QR ya no es válido" });
       return;
     }
 
-    const depreciationValue = maintenanceService.calculateDepreciation(
-      equipment.purchaseDate,
-      equipment.historicalCost,
-      equipment.usefulLife
-    );
+    const branch = await Branch.findById(equipment.branchId).select("name").lean();
+    const timeline = await buildEquipmentTimeline(equipment._id.toString(), 100);
 
-    const tickets = await MaintenanceTicket.find({ equipmentId: equipment._id })
-      .populate("reportedBy", "name")
-      .sort({ createdAt: 1 });
+    // Se recorta lo económico de cada entrada del historial antes de salir.
+    const publicTimeline = timeline.map((entry) => {
+      const { cost, ...meta } = (entry.meta || {}) as Record<string, unknown>;
+      return { ...entry, meta };
+    });
 
     res.json({
       equipment: {
-        ...(await equipmentWithBranchPayload(equipment)),
-        depreciationValue,
+        _id: equipment._id,
+        name: equipment.name,
+        category: equipment.category,
+        brand: equipment.brand,
+        modelName: equipment.modelName,
+        serialNumber: equipment.serialNumber,
+        status: equipment.status,
+        custody: equipment.custody,
+        location: equipment.location,
+        targetTemperatureC: equipment.targetTemperatureC,
+        maintenanceIntervalDays: equipment.maintenanceIntervalDays,
+        lastMaintenanceDate: equipment.lastMaintenanceDate,
+        lastLogAt: equipment.lastLogAt,
+        imageUrl: equipment.imageUrl,
+        branchName: branch?.name || "Local",
       },
-      history: tickets.map((ticket: any) => ({
-        _id: ticket._id,
-        title: ticket.title,
-        description: ticket.description,
-        status: ticket.status,
-        priority: ticket.priority,
-        assignedTo: ticket.assignedTo,
-        resolutionNotes: ticket.resolutionNotes,
-        createdAt: ticket.createdAt,
-        updatedAt: ticket.updatedAt,
-        reportedByName: ticket.reportedBy?.name || "Equipo Allio",
-      })),
+      timeline: publicTimeline,
       access: {
         canWrite: false,
-        message: "Para registrar movimientos, fallas o cierres de mantenimiento debes iniciar sesión o pedir a un administrador que te registre.",
+        message:
+          "Estás viendo la bitácora en modo consulta. Entra con tu cuenta para registrar una revisión, un traspaso o una falla.",
       },
     });
   } catch (error: any) {
-    res.status(500).json({ message: "Error fetching public equipment audit", error: error.message });
+    res.status(500).json({ message: "Error al abrir la bitácora", error: error.message });
   }
 }
 

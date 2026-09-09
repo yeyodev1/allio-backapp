@@ -3,6 +3,7 @@ import { Equipment } from "../models/Equipment.model";
 import { MaintenanceTicket } from "../models/MaintenanceTicket.model";
 import { Branch } from "../models/Branch.model";
 import { Company } from "../models/Company.model";
+import { listUserBranchIds } from "./access.service";
 import QRCode from "qrcode";
 
 export function calculateDepreciation(purchaseDate: Date, historicalCost: number, usefulLife: number): number {
@@ -36,25 +37,36 @@ export async function generateQRCode(equipmentId: string, frontendBaseUrl?: stri
   return qrCode;
 }
 
-export async function checkOverdueMaintenance(userId?: string): Promise<Array<typeof Equipment.prototype>> {
-  const now = new Date();
+const DAY_MS = 24 * 60 * 60 * 1000;
 
-  const overdue = await Equipment.find({
-    $or: [
-      {
-        lastMaintenanceDate: { $exists: true },
-        $expr: {
-          $gt: [
-            { $subtract: [now.getTime(), "$lastMaintenanceDate"] },
-            { $multiply: ["$maintenanceIntervalDays", 24 * 60 * 60 * 1000] },
-          ],
-        },
-      },
-      {
-        lastMaintenanceDate: { $exists: false },
-      },
-    ],
-    status: { $ne: "fuera_servicio" },
+/**
+ * Recorre los equipos del usuario cuyo intervalo de mantenimiento ya venció y abre
+ * una falla para cada uno que no tenga una abierta.
+ *
+ * El vencimiento se calcula en JS y no con `$expr`: Mongo no permite restar una
+ * fecha de un número (`$subtract: [now, "$lastMaintenanceDate"]` fallaba con
+ * "can't $subtract a Date from a double"), y la lista por empresa es corta.
+ *
+ * Un equipo sin mantenimiento registrado cuenta desde su compra (o su alta), no
+ * como vencido desde el día uno: recién creado, no "pasó su intervalo".
+ */
+export async function checkOverdueMaintenance(userId?: string): Promise<Array<typeof Equipment.prototype>> {
+  const now = Date.now();
+
+  const scope: Record<string, unknown> = { status: { $ne: "fuera_servicio" } };
+  if (userId) {
+    const branchIds = await listUserBranchIds(userId);
+    if (branchIds.length === 0) return [];
+    scope.branchId = { $in: branchIds };
+  }
+
+  const candidates = await Equipment.find(scope);
+  const overdue = candidates.filter((equipment) => {
+    const intervalDays = Number(equipment.maintenanceIntervalDays);
+    if (!Number.isFinite(intervalDays) || intervalDays <= 0) return false;
+    const baseline = equipment.lastMaintenanceDate || equipment.purchaseDate || (equipment as any).createdAt;
+    if (!baseline) return false;
+    return now - new Date(baseline).getTime() > intervalDays * DAY_MS;
   });
 
   for (const equipment of overdue) {
@@ -62,26 +74,25 @@ export async function checkOverdueMaintenance(userId?: string): Promise<Array<ty
       equipmentId: equipment._id,
       status: { $in: ["abierto", "en_progreso"] },
     });
+    if (existingTicket) continue;
 
-    if (!existingTicket) {
-      let reportedBy = userId;
-      if (!reportedBy) {
-        const branch = await Branch.findById(equipment.branchId);
-        if (branch) {
-          const company = await Company.findOne({ _id: branch.companyId });
-          if (company) reportedBy = company.userId?.toString();
-        }
-      }
-      await MaintenanceTicket.create({
-        equipmentId: equipment._id,
-        branchId: equipment.branchId,
-        reportedBy: reportedBy || undefined,
-        title: `Mantenimiento vencido: ${equipment.name}`,
-        description: `El equipo ${equipment.name} requiere mantenimiento. Último mantenimiento: ${equipment.lastMaintenanceDate?.toLocaleDateString() || "Ninguno"}. Intervalo: cada ${equipment.maintenanceIntervalDays} días.`,
-        priority: "alta",
-        status: "abierto",
-      });
+    let reportedBy = userId;
+    if (!reportedBy) {
+      const branch = await Branch.findById(equipment.branchId);
+      const company = branch ? await Company.findById(branch.companyId) : null;
+      reportedBy = company?.userId?.toString();
     }
+    if (!reportedBy) continue;
+
+    await MaintenanceTicket.create({
+      equipmentId: equipment._id,
+      branchId: equipment.branchId,
+      reportedBy,
+      title: `Mantenimiento vencido: ${equipment.name}`,
+      description: `El equipo ${equipment.name} requiere mantenimiento. Último mantenimiento: ${equipment.lastMaintenanceDate?.toLocaleDateString("es-EC") || "Ninguno"}. Intervalo: cada ${equipment.maintenanceIntervalDays} días.`,
+      priority: "alta",
+      status: "abierto",
+    });
   }
 
   return overdue;

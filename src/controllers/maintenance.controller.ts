@@ -727,8 +727,9 @@ export async function createEquipmentChecklist(req: AuthRequest, res: Response) 
 export async function checkOverdue(req: AuthRequest, res: Response) {
   try {
     const userId = req.user?.userId;
+    if (!userId) { res.status(401).json({ message: "Unauthorized" }); return; }
     const overdue = await maintenanceService.checkOverdueMaintenance(userId);
-    res.json({ checked: true, overdueCount: overdue.length });
+    res.json({ checked: true, overdueCount: overdue.length, overdue });
   } catch (error: any) {
     res.status(500).json({ message: "Error checking overdue maintenance", error: error.message });
   }

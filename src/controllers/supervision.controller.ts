@@ -517,3 +517,26 @@ export async function listSubmissions(req: AuthRequest, res: Response) {
     res.status(500).json({ message: "Error listing supervision submissions", error: error.message });
   }
 }
+
+/**
+ * Detalle de una visita: encabezado, cada punto con su respuesta y observación,
+ * fotos y ubicación. Solo si pertenece a una empresa del usuario.
+ */
+export async function getSubmission(req: AuthRequest, res: Response) {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) { res.status(401).json({ message: "Unauthorized" }); return; }
+    const access = await getAccess(userId);
+    if (!access || !access.companyIds.length) { res.status(403).json({ message: "No tienes acceso a una empresa" }); return; }
+
+    const id = req.params.id;
+    if (!isObjectId(id)) { res.status(400).json({ message: "id invalido" }); return; }
+
+    const submission = await SupervisionSubmission.findOne({ _id: id, companyId: { $in: access.companyIds } })
+      .populate("submittedBy", "name email role");
+    if (!submission) { res.status(404).json({ message: "Visita no encontrada" }); return; }
+    res.json(submission);
+  } catch (error: any) {
+    res.status(500).json({ message: "Error loading supervision submission", error: error.message });
+  }
+}
